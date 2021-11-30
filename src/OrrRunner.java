@@ -1,6 +1,6 @@
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
+
 
 public class OrrRunner {
 
@@ -8,15 +8,21 @@ public class OrrRunner {
         Ott ott = new Ott();
         try{
 
-            ott.setIp(InetAddress.getByName(args[0]));
-            args = Arrays.copyOfRange(args, 1, args.length);
-
-            for (String arg : args){
-                InetAddress neighbor_ip = InetAddress.getByName(arg);
-                ott.setNeighbors_table(neighbor_ip, 1);
+            if (args.length == 0){  // Se não tem argumentos então é o boostrapper
+                ott.setIp(InetAddress.getByName(Constants.SERVER_ADDRESS));
+                ott.setPort(Constants.DEFAULT_PORT);
+                ott.setId(1);
+                ott.setBootstrapper(true);
             }
 
-            //int serverPort = Integer.parseInt(args[1]);      --> guardar portas?
+            else{  // ip:port:node_id
+                String[] info = args[0].split(":");
+                ott.setIp(InetAddress.getByName(info[0]));
+                ott.setPort(Integer.parseInt(info[1]));
+                ott.setId(Integer.parseInt(info[2]));
+                ott.setBootstrapper(false);
+            }
+
 
         } catch (UnknownHostException e){
             e.printStackTrace();
