@@ -9,6 +9,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -17,9 +18,9 @@ public class Ott {
     public Integer id;
     public InetAddress ip;
     public Integer port;
-    private InetAddress lastReceivedIP;
-    private Integer lastReceivedPort;
-    private Table neighborsTable;    //key: IP vizinho  |  value: port   todo pensar em mudar isto
+    //private InetAddress lastReceivedIP;
+    //private Integer lastReceivedPort;
+    private Table neighbors;
     private Boolean bootstrapper;
     private DatagramSocket socket;
     private final Lock socketLock = new ReentrantLock();
@@ -68,12 +69,12 @@ public class Ott {
         this.port = port;
     }
 
-    public Table getNeighborsTable() {
-        return neighborsTable;
+    public Table getNeighbors() {
+        return neighbors;
     }
 
-    public void setNeighborsTable(Table neighborsTable) {
-        this.neighborsTable = neighborsTable;
+    public void setNeighbors(Table neighbors) {
+        this.neighbors = neighbors;
     }
 
 
@@ -153,8 +154,8 @@ public class Ott {
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
-            this.lastReceivedIP = packet.getAddress();
-            this.lastReceivedPort = packet.getPort();
+            //this.lastReceivedIP = packet.getAddress();
+            //this.lastReceivedPort = packet.getPort();
             rtpPacket = new RTPpacket(this.buffer);
             System.out.println("Packet received.");
             rtpPacket.printPacket();
@@ -166,5 +167,17 @@ public class Ott {
         return rtpPacket;
     }
 
-
+    @Override
+    public String toString() {
+        return "Ott{" +
+                "id=" + id +
+                ", ip=" + ip +
+                ", port=" + port +
+                ", neighbors=" + neighbors +
+                ", bootstrapper=" + bootstrapper +
+                ", socket=" + socket +
+                ", socketLock=" + socketLock +
+                ", buffer=" + Arrays.toString(buffer) +
+                '}';
+    }
 }

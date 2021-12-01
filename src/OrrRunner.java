@@ -22,6 +22,7 @@ public class OrrRunner {
                 ott.setPort(Integer.parseInt(info[1]));
                 ott.setId(Integer.parseInt(info[2]));
                 ott.setBootstrapper(false);
+                ott.toString();
             }
 
 
