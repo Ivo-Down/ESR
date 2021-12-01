@@ -13,6 +13,7 @@ public class OrrRunner {
                 ott.setPort(Constants.DEFAULT_PORT);
                 ott.setId(1);
                 ott.setBootstrapper(true);
+                System.out.println("Bootstrapper is running!");
             }
 
             else{  // ip:port:node_id
