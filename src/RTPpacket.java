@@ -1,9 +1,7 @@
-//class RTPpacket
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class RTPpacket{
-
-  //size of the RTP header:
-  static int HEADER_SIZE = 12;
 
   //Fields that compose the RTP header
   public int Version;
@@ -15,6 +13,7 @@ public class RTPpacket{
   public int SequenceNumber;
   public int TimeStamp;
   public int Ssrc;
+  public int senderId;
   
   //Bitstream of the RTP header
   public byte[] header;
@@ -23,38 +22,46 @@ public class RTPpacket{
   public int payload_size;
   //Bitstream of the RTP payload
   public byte[] payload;
-  
+
+
+    /** Payload Types:
+     *  0 -> asking the server for the neighbors
+     *
+     */
+
 
 
   //--------------------------
   //Constructor of an RTPpacket object from header fields and payload bitstream
   //--------------------------
-  public RTPpacket(int PType, int Framenb, int Time, byte[] data, int data_length){
+  public RTPpacket(int PType, int Framenb, int senderId, int Time, byte[] data, int data_length){
     //fill by default header fields:
-    Version = 2;
-    Padding = 0;
-    Extension = 0;
-    CC = 0;
-    Marker = 0;
-    Ssrc = 0;
+    this.Version = 2;
+    this.Padding = 0;
+    this.Extension = 0;
+    this.CC = 0;
+    this.Marker = 0;
+    this.Ssrc = 0;
 
     //fill changing header fields:
-    SequenceNumber = Framenb;
-    TimeStamp = Time;
-    PayloadType = PType;
+    this.SequenceNumber = Framenb;
+    this.TimeStamp = Time;
+    this.PayloadType = PType;
+    this.senderId = senderId;
     
     //build the header bistream:
     //--------------------------
-    header = new byte[HEADER_SIZE];
+    this.header = new byte[Constants.HEADER_SIZE];
 
     //.............
     //TO COMPLETE
     //.............
+
     //fill the header array of byte with RTP header fields
     header[0] = (byte)(Version << 6 | Padding << 5 | Extension << 4 | CC);
     header[1] = (byte)(Marker << 7 | PayloadType & 0x000000FF);
     header[2] = (byte)(SequenceNumber >> 8);
-    header[3] = (byte)(SequenceNumber & 0xFF); 
+    header[3] = (byte)(SequenceNumber & 0xFF);
     header[4] = (byte)(TimeStamp >> 24);
     header[5] = (byte)(TimeStamp >> 16);
     header[6] = (byte)(TimeStamp >> 8);
@@ -63,6 +70,7 @@ public class RTPpacket{
     header[9] = (byte)(Ssrc >> 16);
     header[10] = (byte)(Ssrc >> 8);
     header[11] = (byte)(Ssrc & 0xFF);
+    this.setSender(senderId);
 
     //fill the payload bitstream:
     //--------------------------
@@ -70,16 +78,13 @@ public class RTPpacket{
     payload = new byte[data_length];
 
     //fill payload array of byte from data (given in parameter of the constructor)
-    //......
-	for (int i=0; i < data_length; i++)
-	  payload[i] = data[i];
-
-    // ! Do not forget to uncomment method printheader() below !
+    this.payload = Arrays.copyOfRange(data,Constants.HEADER_SIZE, Constants.HEADER_SIZE + data_length);
+    this.printheader();
 
   }
     
   //--------------------------
-  //Constructor of an RTPpacket object from the packet bistream 
+  //Constructor of an RTPpacket object from the packet bitstream
   //--------------------------
   public RTPpacket(byte[] packet, int packet_size)
   {
@@ -92,23 +97,24 @@ public class RTPpacket{
     Ssrc = 0;
 
     //check if total packet size is lower than the header size
-    if (packet_size >= HEADER_SIZE) 
+    if (packet_size >= Constants.HEADER_SIZE)
       {
 	//get the header bitsream:
-	header = new byte[HEADER_SIZE];
-	for (int i=0; i < HEADER_SIZE; i++)
+	header = new byte[Constants.HEADER_SIZE];
+	for (int i=0; i < Constants.HEADER_SIZE; i++)
 	  header[i] = packet[i];
 
 	//get the payload bitstream:
-	payload_size = packet_size - HEADER_SIZE;
+	payload_size = packet_size - Constants.HEADER_SIZE;
 	payload = new byte[payload_size];
-	for (int i=HEADER_SIZE; i < packet_size; i++)
-	  payload[i-HEADER_SIZE] = packet[i];
+	for (int i=Constants.HEADER_SIZE; i < packet_size; i++)
+	  payload[i-Constants.HEADER_SIZE] = packet[i];
 
 	//interpret the changing fields of the header:
 	PayloadType = header[1] & 127;
 	SequenceNumber = unsigned_int(header[3]) + 256*unsigned_int(header[2]);
 	TimeStamp = unsigned_int(header[7]) + 256*unsigned_int(header[6]) + 65536*unsigned_int(header[5]) + 16777216*unsigned_int(header[4]);
+	this.senderId = this.getSender();
       }
  }
 
@@ -134,23 +140,34 @@ public class RTPpacket{
   //getlength: return the total length of the RTP packet
   //--------------------------
   public int getlength() {
-    return(payload_size + HEADER_SIZE);
+    return(payload_size + Constants.HEADER_SIZE);
   }
 
   //--------------------------
   //getpacket: returns the packet bitstream and its length
   //--------------------------
-  public int getpacket(byte[] packet)
+  /*public int getpacket(byte[] packet)
   {
     //construct the packet = header + payload
-    for (int i=0; i < HEADER_SIZE; i++)
+    for (int i=0; i < Constants.HEADER_SIZE; i++)
 	packet[i] = header[i];
     for (int i=0; i < payload_size; i++)
-	packet[i+HEADER_SIZE] = payload[i];
+	packet[i+Constants.HEADER_SIZE] = payload[i];
 
     //return total size of the packet
-    return(payload_size + HEADER_SIZE);
-  }
+    return(payload_size + Constants.HEADER_SIZE);
+  }*/
+
+    public byte[] getPacket(){
+        byte [] res = new byte [this.header.length + this.payload.length];
+        System.arraycopy(this.header,0, res, 0, this.header.length);
+        System.arraycopy(this.payload,0, res, this.header.length, this.payload.length);
+        return res;
+    }
+
+    public int getPacketSize(){
+        return this.header.length + this.payload.length;
+    }
 
   //--------------------------
   //gettimestamp
@@ -198,5 +215,17 @@ public class RTPpacket{
     else
       return(256+nb);
   }
+
+  public void setSender(int senderId){
+      byte[] Bytes = ByteBuffer.allocate(4).putInt(senderId).array();
+      int i = 0;
+      for(byte b : Bytes){
+          this.header[i++] = b;
+      }
+  }
+
+    public int getSender(){
+        return ByteBuffer.wrap(this.header,12,4).getInt();
+    }
 
 }

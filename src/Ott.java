@@ -2,19 +2,36 @@ import org.json.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Ott {
 
     public Integer id;
     public InetAddress ip;
     public Integer port;
-    private HashMap<InetAddress,Integer> neighbors_table;    //key: IP vizinho  |  value: port
+    private HashMap<InetAddress,Integer> neighborsTable;    //key: IP vizinho  |  value: port
     private Boolean bootstrapper;
+    private DatagramSocket socket;
+    private final Lock socketLock = new ReentrantLock();
+
+
+    // TODO criar construtores
+    public Ott(){
+        try{
+            this.socket = new DatagramSocket(Constants.DEFAULT_PORT);
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
 
 
     public InetAddress getIp() {
@@ -45,16 +62,16 @@ public class Ott {
         this.port = port;
     }
 
-    public HashMap<InetAddress, Integer> getNeighbors_table() {
-        return neighbors_table;
+    public HashMap<InetAddress, Integer> getNeighborsTable() {
+        return neighborsTable;
     }
 
-    public void setNeighbors_table(HashMap<InetAddress, Integer> neighbors_table) {
-        this.neighbors_table = neighbors_table;
+    public void setNeighborsTable(HashMap<InetAddress, Integer> neighborsTable) {
+        this.neighborsTable = neighborsTable;
     }
 
     public void setNeighbors_table(InetAddress neighbor_ip, int cost) {
-        this.neighbors_table.put(neighbor_ip, cost);
+        this.neighborsTable.put(neighbor_ip, cost);
     }
 
 
@@ -102,9 +119,45 @@ public class Ott {
     }
 
 
-    // metodo para escutar trafego
 
-    // metodo para enviar trafego
+    // Método para enviar um pacote de trafego
+    public void sendPacket(byte [] payload, int type, int frameNb, int senderId, InetAddress IP, int port){
+        try{
+            int timestamp = (int) (System.currentTimeMillis() / 1000);
+
+            RTPpacket newPacket = new RTPpacket(type, frameNb, senderId, timestamp, payload,0);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+
+            this.socket.send(packet);
+            System.out.println(">> Sent packet:");
+
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    // Método para receber pacotes
+    public RTPpacket receivePacket(){
+        RTPpacket fsChunk = new RTPpacket();
+        try{
+            this.socketLock.lock();
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            socket.receive(packet);
+            socket.setSoTimeout(0);  //removes any timeout existing
+            this.lastReceivedIP = packet.getAddress();
+            this.lastReceivedPort = packet.getPort();
+
+            fsChunk = new FS_Chunk_Protocol(this.buffer);
+
+            System.out.println("Packet received.");
+            //fsChunk.printFsChunk();
+        } catch (IOException e){
+            e.printStackTrace();
+        } finally {
+            this.socketLock.unlock();
+        }
+        return fsChunk;
+    }
 
 
 }
