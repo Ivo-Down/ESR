@@ -5,24 +5,23 @@ import java.net.UnknownHostException;
 public class OrrRunner {
 
     public static void main(String[] args) {
-        Ott ott = new Ott();
         try{
 
             if (args.length == 0){  // Se não tem argumentos então é o boostrapper
-                ott.setIp(InetAddress.getByName(Constants.SERVER_ADDRESS));
-                ott.setPort(Constants.DEFAULT_PORT);
-                ott.setId(1);
-                ott.setBootstrapper(true);
+                OttBootStrapper bootStrapper = new OttBootStrapper();
+                System.out.println(bootStrapper);
                 System.out.println("Bootstrapper is running!");
+
+                // TODO FICAR Á ESCUTA DE PEDIDOS
             }
 
             else{  // ip:port:node_id
                 String[] info = args[0].split(":");
-                ott.setIp(InetAddress.getByName(info[0]));
-                ott.setPort(Integer.parseInt(info[1]));
-                ott.setId(Integer.parseInt(info[2]));
-                ott.setBootstrapper(false);
-                ott.toString();
+                Ott overlayNode = new Ott(Integer.parseInt(info[2]), InetAddress.getByName(info[0]), Integer.parseInt(info[1]));
+                System.out.println(overlayNode);
+                System.out.println("Overlay node is running!");
+
+                //TODO ENVIAR PEDIDO AO BOOTSTRAPPER PARA PREENCHER VIZINHOS
             }
 
 

@@ -1,11 +1,18 @@
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+import java.io.FileReader;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class Ott {
+public class OttBootStrapper {
 
     private Integer id;
     private InetAddress ip;
@@ -23,50 +30,19 @@ public class Ott {
 
     // ------------------------------ CONSTRUCTORS ------------------------------
 
-    public Ott(Integer id, InetAddress ip, Integer port){
-        this.id = id;
-        this.ip = ip;
-        this.port = port;
-        this.neighbors = new Table();
+    public OttBootStrapper(){
+        this.id = 1;
+        this.port = Constants.DEFAULT_PORT;
+        this.neighbors = this.getNeighbors(this.id);
         this.requests = new Requests();
 
-
         try{
+            this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
             this.socket = new DatagramSocket(this.port);
+
         } catch (IOException e){
             e.printStackTrace();
         }
-    }
-
-
-    // ------------------------------ GETTERS AND SETTERS ------------------------------
-
-    public InetAddress getIp() {
-        return ip;
-    }
-
-    public void setIp(InetAddress ip) {
-        this.ip = ip;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Integer getPort() {
-        return port;
-    }
-
-    public void setPort(Integer port) {
-        this.port = port;
-    }
-
-    public Table getNeighbors() {
-        return neighbors;
-    }
-
-    public void setNeighbors(Table neighbors) {
-        this.neighbors = neighbors;
     }
 
 
@@ -76,6 +52,51 @@ public class Ott {
 
 
     // ------------------------------ OTHER METHODS ------------------------------
+
+
+    // Método para pedir ao servidor a lista de vizinhos (com a sua informação)
+    public Table getNeighbors(int node_id){
+        JSONParser parser = new JSONParser();
+        ArrayList<Integer> neighbors = new ArrayList<>();
+        Table res = new Table();
+
+        // NOTA: ISTO ESTA MAL OTIMIZADO, PERCORRE 2 VEZES A ESTRUTURA PARA IR BUSCAR OS DADOS
+        try {
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+
+            for (Object o: jsonArray){
+                JSONObject node = (JSONObject) o;
+                int id = Integer.parseInt((String) node.get("node"));
+
+                if(node_id == id){
+                    JSONArray neighbors_json = (JSONArray) node.get("neighbors");
+
+                    for (Object obj : neighbors_json){
+                        Integer i = ((Long) obj).intValue();
+                        neighbors.add(i);
+                    }
+                    break;
+                }
+            }
+
+            for (Object o: jsonArray){
+                JSONObject node = (JSONObject) o;
+                int id = Integer.parseInt((String) node.get("node"));
+
+                if (neighbors.contains(id)){
+                    int node_port = Integer.parseInt((String) node.get("port"));;
+                    InetAddress node_ip = InetAddress.getByName((String) node.get("ip"));
+
+                    res.addNode(node_ip, node_port, id);
+                }
+            }
+        } catch (IOException | ParseException e){
+            e.printStackTrace();
+        }
+
+        return res;
+    }
+
 
 
     public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
@@ -113,6 +134,5 @@ public class Ott {
         }
         return rtpPacket;
     }
-
 
 }
