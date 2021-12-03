@@ -122,9 +122,10 @@ public class OttBootStrapper {
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
-            //this.lastReceivedIP = packet.getAddress();
-            //this.lastReceivedPort = packet.getPort();
-            rtpPacket = new RTPpacket(this.buffer);
+            InetAddress fromIp = packet.getAddress();
+            Integer fromPort = packet.getPort();
+
+            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
             System.out.println("Packet received.");
             rtpPacket.printPacket();
         } catch (IOException e){
@@ -133,6 +134,37 @@ public class OttBootStrapper {
             this.socketLock.unlock();
         }
         return rtpPacket;
+    }
+
+
+    public void processPacket(RTPpacket packetReceived){
+
+        switch (packetReceived.getPacketType()) {
+
+            case 0: //Node wants to get its neighbors
+
+                int nodeId = packetReceived.getSenderId();
+                System.out.println("A new neighbors request has been made.");
+                Table requestedNeighbors = getNeighbors(nodeId);
+
+                // TODO PASSAR TABLE PARA BYTE[]
+
+                // Sending the answer
+                sendPacket(new byte[0], 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+
+            case 4: //Receiving File
+                /*HashMap<Integer, byte[]> fileData = receiveFile();
+                String file = transformIntoFile(fileData);
+                System.out.println(file);*/
+                break;
+
+            case 6: //IsAlive confirmation
+                System.out.println("Server " + packetReceived.getServerId() + " is alive.");
+                break;
+
+
+        }
     }
 
 }

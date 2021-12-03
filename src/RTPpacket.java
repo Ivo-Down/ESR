@@ -1,3 +1,4 @@
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -16,6 +17,8 @@ public class RTPpacket{
 
       private byte[] header;
       private byte[] payload;
+      private InetAddress fromIp;
+      private Integer fromPort;
 
 
     /** Payload Types:
@@ -43,6 +46,15 @@ public class RTPpacket{
         this.header = Arrays.copyOfRange(packet,0, Constants.HEADER_SIZE);
         int dataSize = getPayloadSize();
         this.payload = Arrays.copyOfRange(packet,Constants.HEADER_SIZE, Constants.HEADER_SIZE + dataSize);
+
+    }
+
+    public RTPpacket (byte[] packet, InetAddress fromIp, Integer fromPort){
+        this.header = Arrays.copyOfRange(packet,0, Constants.HEADER_SIZE);
+        int dataSize = getPayloadSize();
+        this.payload = Arrays.copyOfRange(packet,Constants.HEADER_SIZE, Constants.HEADER_SIZE + dataSize);
+        this.fromIp = fromIp;
+        this.fromPort = fromPort;
 
     }
 
@@ -91,7 +103,7 @@ public class RTPpacket{
             this.header[i++] = b;
         }
     }
-    public int getServerId(){
+    public int getSenderId(){
         return ByteBuffer.wrap(this.header,8,4).getInt();
     }
 
@@ -143,6 +155,20 @@ public class RTPpacket{
         return this.header.length + this.payload.length;
     }
 
+    public InetAddress getFromIp() {
+        return fromIp;
+    }
+    public void setFromIp(InetAddress fromIp) {
+        this.fromIp = fromIp;
+    }
+
+
+    public Integer getFromPort() {
+        return fromPort;
+    }
+    public void setFromPort(Integer fromPort) {
+        this.fromPort = fromPort;
+    }
 
 
     // ------------------------------ OTHER METHODS ------------------------------
@@ -150,7 +176,7 @@ public class RTPpacket{
     public void printPacket(){
         System.out.println("    PacketType " + this.getPacketType());
         System.out.println("    SequenceNumber " + this.getSequenceNumber());
-        System.out.println("    SenderId " + this.getServerId());
+        System.out.println("    SenderId " + this.getSenderId());
         System.out.println("    TimeStamp " + this.getTimeStamp());
         System.out.println("    PayloadSize " + this.getPayloadSize());
         System.out.println("    Payload " + new String(this.getPayload()));
@@ -159,7 +185,7 @@ public class RTPpacket{
     public void printPacketHeader(){
         System.out.println("    PacketType " + this.getPacketType());
         System.out.println("    SequenceNumber " + this.getSequenceNumber());
-        System.out.println("    SenderId " + this.getServerId());
+        System.out.println("    SenderId " + this.getSenderId());
         System.out.println("    TimeStamp " + this.getTimeStamp());
         System.out.println("    PayloadSize " + this.getPayloadSize());
     }
