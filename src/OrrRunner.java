@@ -10,18 +10,18 @@ public class OrrRunner {
             if (args.length == 0){  // Se não tem argumentos então é o boostrapper
                 OttBootStrapper bootStrapper = new OttBootStrapper();
                 System.out.println(bootStrapper);
-                System.out.println("Bootstrapper is running!");
+                bootStrapper.run();
 
-                // TODO FICAR Á ESCUTA DE PEDIDOS
+
             }
 
             else{  // ip:port:node_id
                 String[] info = args[0].split(":");
                 Ott overlayNode = new Ott(Integer.parseInt(info[2]), InetAddress.getByName(info[0]), Integer.parseInt(info[1]));
                 System.out.println(overlayNode);
-                System.out.println("Overlay node is running!");
+                overlayNode.run();
 
-                //TODO ENVIAR PEDIDO AO BOOTSTRAPPER PARA PREENCHER VIZINHOS
+
             }
 
 

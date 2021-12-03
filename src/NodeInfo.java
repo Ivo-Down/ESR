@@ -1,13 +1,15 @@
+import java.io.*;
 import java.net.InetAddress;
 
-public class NodeInfo {
+public class NodeInfo implements Serializable {
 
+    private static final long serialVersionUID = 5249369646723187393L;
     enum nodeState {
-        READY, RUNNING, BLACKLISTED       //TODO decidir os estados a termos
+        READY, OFF, BLACKLISTED       //TODO decidir os estados a termos
     }
 
     private InetAddress nodeIp;
-    private int nodePort;
+    private Integer nodePort;
     private nodeState nodeState;
 
     public NodeInfo(InetAddress ip, int port, nodeState state){

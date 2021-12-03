@@ -12,14 +12,15 @@ import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class OttBootStrapper {
+public class OttBootStrapper implements Runnable {
 
     private Integer id;
     private InetAddress ip;
     private Integer port;
+    private boolean running;
     //private InetAddress lastReceivedIP;
     //private Integer lastReceivedPort;
-    private Table neighbors;
+    private Table overlayNodes;
     //private Boolean bootstrapper;
     private DatagramSocket socket;
     private Requests requests;
@@ -33,7 +34,7 @@ public class OttBootStrapper {
     public OttBootStrapper(){
         this.id = 1;
         this.port = Constants.DEFAULT_PORT;
-        this.neighbors = this.getNeighbors(this.id);
+        this.overlayNodes = this.getAllNodes();
         this.requests = new Requests();
 
         try{
@@ -52,6 +53,101 @@ public class OttBootStrapper {
 
 
     // ------------------------------ OTHER METHODS ------------------------------
+
+
+    public void run() {
+        try {
+            this.running = true;
+            System.out.println("Bootstrapper is running!");
+
+
+            // Thread para responder a pedidos
+            /**new Thread(() -> {
+                //Quando um pedido é adicionado ao clientRequests, a thread acorda e trata de pedir o ficheiro e devolvê-lo
+
+                while(this.running){
+                    Client_Requests.Client_Request client_request = this.clientRequests.getNextRequest();  //Fica bloqueado até conseguir um request
+                    System.out.println("Client request found!");
+                    String filename = client_request.getFilename();
+                    Socket clientSocket = client_request.getSocket();
+
+
+                    try{
+                        DataOutputStream clientOut = new DataOutputStream(clientSocket.getOutputStream());
+                        if(table.getServersWithState(ServerInfo.serverState.READY).size()>0) {    //se tem pelo menos um server disponivel pede o ficheiro
+                            // Get the file's data
+                            byte [] data = getFile(filename);
+
+                            // Create a new reply with the data
+                            if (data!=null){
+
+                                System.out.println("Sending file " + filename + " to client.");
+                                String contentLen = "Content-Length: "+data.length +"\r\n";
+                                String contentDisposition = "Content-Disposition: attachment; filename=\"" + filename + "\"";
+                                clientOut.write("HTTP/1.1 200 OK\r\n".getBytes(StandardCharsets.UTF_8));
+                                clientOut.write(contentLen.getBytes(StandardCharsets.UTF_8));
+                                clientOut.write(contentDisposition.getBytes(StandardCharsets.UTF_8));
+                                clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                                clientOut.write(data);
+                                clientOut.flush();
+                                clientSocket.close();
+                            }
+
+
+                            else{
+                                clientOut.write("HTTP/1.1 404 Not Found Error\r\n".getBytes(StandardCharsets.UTF_8));
+                                clientOut.write("Content-Length: 0 \r\n".getBytes(StandardCharsets.UTF_8));
+                                clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                                clientOut.flush();
+                                clientSocket.close();
+                            }
+
+                        }
+                        else{
+                            clientOut.write("HTTP/1.1 500 Internal Server Error\r\n".getBytes(StandardCharsets.UTF_8));
+                            clientOut.write("Content-Length: 0 \r\n".getBytes(StandardCharsets.UTF_8));
+                            clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                            clientOut.flush();
+                            clientSocket.close();
+                        }
+
+                    } catch (IOException e){
+                        e.printStackTrace();
+                    }
+                }
+
+
+                System.out.println(Thread.currentThread().getName() + " is ending.");
+            }).start(); */
+
+
+            // Main thread listening to node requests
+            while(this.running){
+                RTPpacket receivePacket = receivePacket();
+                if(receivePacket!=null)
+                    processPacket(receivePacket);
+
+
+                // Processa chunks que tenham sido ignorados, como novos servidores
+                //processStoredChunks();
+                //Thread.sleep(100);
+                //table.printTable();
+            }
+
+
+            System.out.println("Bootstrapper is shutting down.");
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
+
+
+
+
 
 
     // Método para pedir ao servidor a lista de vizinhos (com a sua informação)
@@ -97,6 +193,28 @@ public class OttBootStrapper {
         return res;
     }
 
+    public Table getAllNodes(){
+        JSONParser parser = new JSONParser();
+        Table res = new Table();
+        try {
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+
+            for (Object o: jsonArray){
+                JSONObject node = (JSONObject) o;
+                int id = Integer.parseInt((String) node.get("node"));
+                int node_port = Integer.parseInt((String) node.get("port"));;
+                InetAddress node_ip = InetAddress.getByName((String) node.get("ip"));
+
+                res.addNode(node_ip, node_port, id);
+
+            }
+        } catch (IOException | ParseException e){
+            e.printStackTrace();
+        }
+
+        return res;
+    }
+
 
 
     public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
@@ -126,7 +244,7 @@ public class OttBootStrapper {
             Integer fromPort = packet.getPort();
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println("Packet received.");
+            System.out.println(">> Packet received.");
             rtpPacket.printPacket();
         } catch (IOException e){
             e.printStackTrace();
@@ -147,20 +265,18 @@ public class OttBootStrapper {
                 System.out.println("A new neighbors request has been made.");
                 Table requestedNeighbors = getNeighbors(nodeId);
 
-                // TODO PASSAR TABLE PARA BYTE[]
+                byte[] data = Table.serialize(requestedNeighbors);
+
+                // Updating the state of the overlay to ready
+                this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.READY);
 
                 // Sending the answer
-                sendPacket(new byte[0], 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(data, 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
-            case 4: //Receiving File
-                /*HashMap<Integer, byte[]> fileData = receiveFile();
-                String file = transformIntoFile(fileData);
-                System.out.println(file);*/
-                break;
 
-            case 6: //IsAlive confirmation
-                System.out.println("Server " + packetReceived.getServerId() + " is alive.");
+            case 99: //IsAlive confirmation
+                System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
                 break;
 
 
