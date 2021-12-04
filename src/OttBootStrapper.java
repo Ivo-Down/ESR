@@ -130,15 +130,6 @@ public class OttBootStrapper implements Runnable {
             new Thread(() -> {
 
 
-                /**Timer timer = new Timer();
-                timer.scheduleAtFixedRate(new TimerTask() {
-                    @Override
-                    public void run() {
-                        // Get nodes that are flagged with 'ON'
-                        Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
-                    }
-                }, 0, Constants.NODE_ALIVE_CHECKING_TIME);*/
-
                 // De x em x segundos vai verificar se os servidores ainda estão vivos
                 ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
                 scheduler.scheduleAtFixedRate(() -> {
@@ -162,14 +153,14 @@ public class OttBootStrapper implements Runnable {
 
             // ---> Main thread listening to node requests
             while(this.running){
-                RTPpacket receivePacket = receivePacket(1000);
+                RTPpacket receivePacket = receivePacket();
                 if(receivePacket!=null)
                     processPacket(receivePacket);
 
 
                 // Processa chunks que tenham sido ignorados, como novos servidores
                 //processStoredChunks();
-                Thread.sleep(100);
+                //Thread.sleep(100);
                 //table.printTable();
             }
 
@@ -193,7 +184,7 @@ public class OttBootStrapper implements Runnable {
         for(int i=1; i<=Constants.TRIES_UNTIL_TIMEOUT; i++){
 
             sendPacket(new byte[0], 5, 1, id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-            RTPpacket receivedPacket = receivePacket(i*1000);
+            RTPpacket receivedPacket = receivePacket(i*1000); //todo tirar isto daqui
 
             if(receivedPacket!=null){
                 System.out.println("Reached node "+ id+" with success.");
@@ -287,7 +278,7 @@ public class OttBootStrapper implements Runnable {
             RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
-            System.out.println(">> Sent packet:");
+            System.out.println(">> Sent packet to node: " + senderId + "    IP: " + IP + "  port: " + port);
 
         } catch (IOException e){
             e.printStackTrace();
@@ -356,6 +347,10 @@ public class OttBootStrapper implements Runnable {
 
                 // Sending the answer
                 sendPacket(data, 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+
+            case 6: //IsAlive confirmation
+                System.out.println("Server " + packetReceived.getSenderId() + " is alive.");
                 break;
 
 

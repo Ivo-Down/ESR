@@ -12,10 +12,7 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
-    //private InetAddress lastReceivedIP;
-    //private Integer lastReceivedPort;
     private Table neighbors;
-    //private Boolean bootstrapper;
     private DatagramSocket socket;
     private Requests requests;
 
@@ -31,13 +28,6 @@ public class Ott implements Runnable {
         this.port = port;
         this.neighbors = new Table();
         this.requests = new Requests();
-
-
-        try{
-            this.socket = new DatagramSocket(this.port);
-        } catch (IOException e){
-            e.printStackTrace();
-        }
     }
 
 
@@ -82,8 +72,9 @@ public class Ott implements Runnable {
     public void run() {
         try{
             this.running = false;
-            this.socket = new DatagramSocket();
-            //socket.connect(this.GatewayIP, this.GatewayPort);
+            this.socket = new DatagramSocket(this.port);
+            //this.socket = new DatagramSocket();     isto só é usado se o cliente n especificar a porta
+            //this.port = this.socket.getPort();
             System.out.println("Node is running!");
 
 
@@ -149,7 +140,7 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
-            System.out.println(">> Sent packet:");
+            System.out.println(">> Sent packet to node: " + senderId + "    IP: " + IP + "  port: " + port);
 
         } catch (IOException e){
             e.printStackTrace();
@@ -164,8 +155,7 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
-            //this.lastReceivedIP = packet.getAddress();
-            //this.lastReceivedPort = packet.getPort();
+
             rtpPacket = new RTPpacket(this.buffer);
             System.out.println("Packet received.");
             rtpPacket.printPacketHeader();
@@ -187,6 +177,11 @@ public class Ott implements Runnable {
                 byte[] data = packetReceived.getPayload();
                 this.neighbors = (Table) Table.deserialize(data);
                 System.out.println("Received neighbors information.");
+                break;
+
+            case 5: //Node receives a 'Is alive check'
+                // Sends a Im alive signal
+                sendPacket(new byte[0], 6, 1, this.id, this.ip, this.port);
                 break;
 
 
