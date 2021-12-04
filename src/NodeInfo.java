@@ -5,7 +5,7 @@ public class NodeInfo implements Serializable {
 
     private static final long serialVersionUID = 5249369646723187393L;
     enum nodeState {
-        READY, OFF, BLACKLISTED       //TODO decidir os estados a termos
+        ON, OFF, BLACKLISTED       //TODO decidir os estados a termos
     }
 
     private InetAddress nodeIp;
@@ -21,7 +21,7 @@ public class NodeInfo implements Serializable {
     public NodeInfo(InetAddress ip, int port){
         this.nodeIp = ip;
         this.nodePort = port;
-        this.nodeState = nodeState.READY;
+        this.nodeState = nodeState.ON;
     }
 
     public InetAddress getNodeIp() {

@@ -24,6 +24,7 @@ public class Table implements Serializable {
     }
 
 
+
     public InetAddress getNodeIP(int nodeId){ return neighborNodes.get(nodeId).getNodeIp(); }
 
 
@@ -37,22 +38,16 @@ public class Table implements Serializable {
     }
 
 
-    public ArrayList<Integer> getNodesWithState(NodeInfo.nodeState state){
-        ArrayList<Integer> res = new ArrayList();
-        for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
+    public Table getNodesWithState(NodeInfo.nodeState state){
+        Table res = new Table();
+
+        for(Map.Entry<Integer, NodeInfo> e: this.neighborNodes.entrySet()){
             if(e.getValue().getNodeState().equals(state))
-                res.add(e.getKey());
+                res.addNode(e.getKey(), e.getValue());
         }
         return res;
     }
 
-    public int getNodeReady(){
-        for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
-            if(e.getValue().getNodeState().equals(NodeInfo.nodeState.READY))
-                return e.getKey();
-        }
-        return -1;
-    }
 
     public ArrayList<Integer> getNeighborNodeIds(){
         ArrayList<Integer> res = new ArrayList();
@@ -68,6 +63,10 @@ public class Table implements Serializable {
             res.add(e.getValue());
         }
         return res;
+    }
+
+    public HashMap<Integer, NodeInfo> getMap(){
+        return this.neighborNodes;
     }
 
 

@@ -9,6 +9,10 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -120,21 +124,52 @@ public class OttBootStrapper implements Runnable {
                 System.out.println(Thread.currentThread().getName() + " is ending.");
             }).start(); */
 
-            // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
+
+
+            // ---> Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
             new Thread(() -> {
-                // TODO  -- ter cuidado com concorrencias
+
+
+                /**Timer timer = new Timer();
+                timer.scheduleAtFixedRate(new TimerTask() {
+                    @Override
+                    public void run() {
+                        // Get nodes that are flagged with 'ON'
+                        Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
+                    }
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME);*/
+
+                // De x em x segundos vai verificar se os servidores ainda estão vivos
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.scheduleAtFixedRate(() -> {
+                    try {
+                        // Get nodes that are flagged with 'ON'
+                        Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
+
+                        // For each online node, check if it is alive
+                        for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
+                            checkIfServerAlive(e.getKey(), e.getValue());  //todo aqui dentro só se vai mandar o isAliveCheck, n se vai ouvir
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.MILLISECONDS);
+
             }).start();
 
-            // Main thread listening to node requests
+            // TODO  -- ter apenas uma thread a receber do socket
+
+
+            // ---> Main thread listening to node requests
             while(this.running){
-                RTPpacket receivePacket = receivePacket();
+                RTPpacket receivePacket = receivePacket(1000);
                 if(receivePacket!=null)
                     processPacket(receivePacket);
 
 
                 // Processa chunks que tenham sido ignorados, como novos servidores
                 //processStoredChunks();
-                //Thread.sleep(100);
+                Thread.sleep(100);
                 //table.printTable();
             }
 
@@ -146,6 +181,36 @@ public class OttBootStrapper implements Runnable {
         }
     }
 
+
+
+
+
+
+
+    public boolean checkIfServerAlive (int id, NodeInfo nodeInfo){
+        System.out.println("Checking if node "+ id+" is alive.");
+
+        for(int i=1; i<=Constants.TRIES_UNTIL_TIMEOUT; i++){
+
+            sendPacket(new byte[0], 5, 1, id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+            RTPpacket receivedPacket = receivePacket(i*1000);
+
+            if(receivedPacket!=null){
+                System.out.println("Reached node "+ id+" with success.");
+                processPacket(receivedPacket);
+
+                this.overlayNodes.setNodeState(id, NodeInfo.nodeState.ON);
+                return true;
+            }
+            else{
+                System.out.println("Failed to reach node "+ id+". Tentative number "+i+".");
+                this.overlayNodes.setNodeState(id, NodeInfo.nodeState.OFF);
+            }
+        }
+        this.overlayNodes.setNodeState(id, NodeInfo.nodeState.OFF);
+        System.out.println("Server "+id+ " timed out.");
+        return false;
+    }
 
 
 
@@ -219,10 +284,8 @@ public class OttBootStrapper implements Runnable {
     public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
         try{
             int timeStamp = (int) (System.currentTimeMillis() / 1000);
-
             RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
-
             this.socket.send(packet);
             System.out.println(">> Sent packet:");
 
@@ -253,6 +316,28 @@ public class OttBootStrapper implements Runnable {
         return rtpPacket;
     }
 
+    public RTPpacket receivePacket(int timeout){
+        RTPpacket rtpPacket;
+        try{
+            this.socketLock.lock();
+            socket.setSoTimeout(timeout);
+            DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
+            socket.receive(packet);
+            socket.setSoTimeout(0);
+            InetAddress fromIp = packet.getAddress();
+            Integer fromPort = packet.getPort();
+
+            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
+            System.out.println(">> Packet received.");
+            rtpPacket.printPacket();
+        } catch (IOException e){
+            e.printStackTrace();
+            return null;
+        } finally {
+            this.socketLock.unlock();
+        }
+        return rtpPacket;
+    }
 
     public void processPacket(RTPpacket packetReceived){
 
@@ -267,7 +352,7 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = Table.serialize(requestedNeighbors);
 
                 // Updating the state of the overlay to ready
-                this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.READY);
+                this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.ON);
 
                 // Sending the answer
                 sendPacket(data, 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
