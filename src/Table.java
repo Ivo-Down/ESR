@@ -19,6 +19,10 @@ public class Table implements Serializable {
         neighborNodes.put(nodeId, nodeInfo);
     }
 
+    public void addNode(int nodeId, NodeInfo nodeInfo){
+        neighborNodes.put(nodeId, nodeInfo);
+    }
+
 
     public InetAddress getNodeIP(int nodeId){ return neighborNodes.get(nodeId).getNodeIp(); }
 
@@ -74,11 +78,21 @@ public class Table implements Serializable {
         }
     }
 
+    public NodeInfo getNodeInfo(Integer nodeId){
+        return this.neighborNodes.get(nodeId);
+    }
+
 
     public void removeNode(int nodeId){
         this.neighborNodes.remove(nodeId);
     }
 
+    @Override
+    public String toString() {
+        return "Table{" +
+                "neighborNodes=" + neighborNodes +
+                '}';
+    }
 
 
 

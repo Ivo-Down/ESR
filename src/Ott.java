@@ -92,9 +92,7 @@ public class Ott implements Runnable {
             while (running) {
                 System.out.println("--------------------------------");
                 RTPpacket receivePacket = receivePacket();
-
                 processPacket(receivePacket);
-
                 System.out.println("--------------------------------");
             }
             socket.close();
@@ -189,7 +187,6 @@ public class Ott implements Runnable {
                 byte[] data = packetReceived.getPayload();
                 this.neighbors = (Table) Table.deserialize(data);
                 System.out.println("Received neighbors information.");
-                System.out.println(this.neighbors.toString());
                 break;
 
 
@@ -201,4 +198,15 @@ public class Ott implements Runnable {
         }
     }
 
+    @Override
+    public String toString() {
+        return "Ott{" +
+                "id=" + id +
+                ", ip=" + ip +
+                ", port=" + port +
+                ", running=" + running +
+                ", neighbors=" + neighbors.toString() +
+                ", requests=" + requests +
+                '}';
+    }
 }

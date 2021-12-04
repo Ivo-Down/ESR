@@ -120,6 +120,10 @@ public class OttBootStrapper implements Runnable {
                 System.out.println(Thread.currentThread().getName() + " is ending.");
             }).start(); */
 
+            // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
+            new Thread(() -> {
+                // TODO  -- ter cuidado com concorrencias
+            }).start();
 
             // Main thread listening to node requests
             while(this.running){
@@ -175,17 +179,12 @@ public class OttBootStrapper implements Runnable {
                 }
             }
 
-            for (Object o: jsonArray){
-                JSONObject node = (JSONObject) o;
-                int id = Integer.parseInt((String) node.get("node"));
-
-                if (neighbors.contains(id)){
-                    int node_port = Integer.parseInt((String) node.get("port"));;
-                    InetAddress node_ip = InetAddress.getByName((String) node.get("ip"));
-
-                    res.addNode(node_ip, node_port, id);
-                }
+            // Como a info de cada overlay node já está em memória
+            for (Integer i: neighbors){
+                NodeInfo nodeInfo = this.overlayNodes.getNodeInfo(i);
+                res.addNode(i, nodeInfo);
             }
+
         } catch (IOException | ParseException e){
             e.printStackTrace();
         }
