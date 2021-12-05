@@ -65,66 +65,6 @@ public class OttBootStrapper implements Runnable {
             System.out.println("Bootstrapper is running!");
 
 
-            // Thread para responder a pedidos
-            /**new Thread(() -> {
-                //Quando um pedido é adicionado ao clientRequests, a thread acorda e trata de pedir o ficheiro e devolvê-lo
-
-                while(this.running){
-                    Client_Requests.Client_Request client_request = this.clientRequests.getNextRequest();  //Fica bloqueado até conseguir um request
-                    System.out.println("Client request found!");
-                    String filename = client_request.getFilename();
-                    Socket clientSocket = client_request.getSocket();
-
-
-                    try{
-                        DataOutputStream clientOut = new DataOutputStream(clientSocket.getOutputStream());
-                        if(table.getServersWithState(ServerInfo.serverState.READY).size()>0) {    //se tem pelo menos um server disponivel pede o ficheiro
-                            // Get the file's data
-                            byte [] data = getFile(filename);
-
-                            // Create a new reply with the data
-                            if (data!=null){
-
-                                System.out.println("Sending file " + filename + " to client.");
-                                String contentLen = "Content-Length: "+data.length +"\r\n";
-                                String contentDisposition = "Content-Disposition: attachment; filename=\"" + filename + "\"";
-                                clientOut.write("HTTP/1.1 200 OK\r\n".getBytes(StandardCharsets.UTF_8));
-                                clientOut.write(contentLen.getBytes(StandardCharsets.UTF_8));
-                                clientOut.write(contentDisposition.getBytes(StandardCharsets.UTF_8));
-                                clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-                                clientOut.write(data);
-                                clientOut.flush();
-                                clientSocket.close();
-                            }
-
-
-                            else{
-                                clientOut.write("HTTP/1.1 404 Not Found Error\r\n".getBytes(StandardCharsets.UTF_8));
-                                clientOut.write("Content-Length: 0 \r\n".getBytes(StandardCharsets.UTF_8));
-                                clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-                                clientOut.flush();
-                                clientSocket.close();
-                            }
-
-                        }
-                        else{
-                            clientOut.write("HTTP/1.1 500 Internal Server Error\r\n".getBytes(StandardCharsets.UTF_8));
-                            clientOut.write("Content-Length: 0 \r\n".getBytes(StandardCharsets.UTF_8));
-                            clientOut.write("Content-Type: text/plain\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-                            clientOut.flush();
-                            clientSocket.close();
-                        }
-
-                    } catch (IOException e){
-                        e.printStackTrace();
-                    }
-                }
-
-
-                System.out.println(Thread.currentThread().getName() + " is ending.");
-            }).start(); */
-
-
 
             // ---> Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
             new Thread(() -> {
@@ -149,13 +89,16 @@ public class OttBootStrapper implements Runnable {
             }).start();
 
             // TODO  -- ter apenas uma thread a receber do socket
+            // TODO -- ter uma thread a tratar do processamento dos pacotes
 
 
-            // ---> Main thread listening to node requests
+            // ---> Main thread listening to node requests and replying
             while(this.running){
-                RTPpacket receivePacket = receivePacket();
+                RTPpacket receivePacket = receivePacket(100);
                 if(receivePacket!=null)
                     processPacket(receivePacket);
+
+                // Check if there are any packets to send and send them
 
 
                 // Processa chunks que tenham sido ignorados, como novos servidores
