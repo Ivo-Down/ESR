@@ -22,10 +22,7 @@ public class OttBootStrapper implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
-    //private InetAddress lastReceivedIP;
-    //private Integer lastReceivedPort;
     private Table overlayNodes;
-    //private Boolean bootstrapper;
     private DatagramSocket socket;
     private Requests requests;
 
@@ -93,13 +90,11 @@ public class OttBootStrapper implements Runnable {
 
             // ---> Main thread listening to node requests and replying
             while(this.running){
-                RTPpacket receivePacket = receivePacket(100);
+                RTPpacket receivePacket = receivePacket();
                 if(receivePacket!=null)
                     processPacket(receivePacket);
 
                 // Check if there are any packets to send and send them
-
-
                 // Processa chunks que tenham sido ignorados, como novos servidores
                 //processStoredChunks();
                 //Thread.sleep(100);
@@ -125,8 +120,8 @@ public class OttBootStrapper implements Runnable {
 
         for(int i=1; i<=Constants.TRIES_UNTIL_TIMEOUT; i++){
 
-            sendPacket(new byte[0], 5, 1, id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-            RTPpacket receivedPacket = receivePacket(i*1000); //todo tirar isto daqui
+            sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+            RTPpacket receivedPacket = receivePacket(i*1000);  //TODO TIRAR ISTO DAQUI OU USAR OUTRO SOCKET OU ESTRUTURA E UM TIMER
 
             if(receivedPacket!=null){
                 System.out.println("Reached node "+ id+" with success.");
@@ -220,8 +215,8 @@ public class OttBootStrapper implements Runnable {
             RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
-            System.out.println(">> Sent packet to node: " + senderId + "    IP: " + IP + "  port: " + port);
-
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -242,7 +237,6 @@ public class OttBootStrapper implements Runnable {
             rtpPacket.printPacket();
         } catch (IOException e){
             e.printStackTrace();
-        } finally {
         }
         return rtpPacket;
     }
@@ -268,7 +262,6 @@ public class OttBootStrapper implements Runnable {
     }
 
     public void processPacket(RTPpacket packetReceived){
-
         switch (packetReceived.getPacketType()) {
 
             case 0: //Node wants to get its neighbors
@@ -283,19 +276,12 @@ public class OttBootStrapper implements Runnable {
                 this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.ON);
 
                 // Sending the answer
-                sendPacket(data, 1, 1, nodeId, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
             case 6: //IsAlive confirmation
-                System.out.println("Server " + packetReceived.getSenderId() + " is alive.");
-                break;
-
-
-            case 99: //IsAlive confirmation
                 System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
                 break;
-
-
         }
     }
 

@@ -3,8 +3,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class Ott implements Runnable {
 
@@ -139,8 +137,8 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
-            System.out.println(">> Sent packet to node: " + senderId + "    IP: " + IP + "  port: " + port);
-
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -153,13 +151,14 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
+            InetAddress fromIp = packet.getAddress();
+            Integer fromPort = packet.getPort();
 
-            rtpPacket = new RTPpacket(this.buffer);
-            System.out.println("Packet received.");
-            rtpPacket.printPacketHeader();
+            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
+            System.out.println(">> Packet received.");
+            rtpPacket.printPacket();
         } catch (IOException e){
             e.printStackTrace();
-        } finally {
         }
         return rtpPacket;
     }
@@ -178,15 +177,8 @@ public class Ott implements Runnable {
 
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
-                sendPacket(new byte[0], 6, 1, this.id, this.ip, this.port);
+                sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
-
-
-            case 99: //IsAlive confirmation
-                System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
-                break;
-
-
         }
     }
 
