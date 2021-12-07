@@ -16,7 +16,6 @@ public class Ott implements Runnable {
     private DatagramSocket socket;
     private Requests requests;
 
-    private final Lock socketLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -151,7 +150,6 @@ public class Ott implements Runnable {
     public RTPpacket receivePacket(){
         RTPpacket rtpPacket = new RTPpacket();
         try{
-            this.socketLock.lock();
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
@@ -162,7 +160,6 @@ public class Ott implements Runnable {
         } catch (IOException e){
             e.printStackTrace();
         } finally {
-            this.socketLock.unlock();
         }
         return rtpPacket;
     }

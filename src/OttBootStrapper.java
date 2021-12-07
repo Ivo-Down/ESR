@@ -29,7 +29,6 @@ public class OttBootStrapper implements Runnable {
     private DatagramSocket socket;
     private Requests requests;
 
-    private final Lock socketLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -232,7 +231,6 @@ public class OttBootStrapper implements Runnable {
     public RTPpacket receivePacket(){
         RTPpacket rtpPacket = new RTPpacket();
         try{
-            this.socketLock.lock();
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
             socket.setSoTimeout(0);  //removes any timeout existing
@@ -245,7 +243,6 @@ public class OttBootStrapper implements Runnable {
         } catch (IOException e){
             e.printStackTrace();
         } finally {
-            this.socketLock.unlock();
         }
         return rtpPacket;
     }
@@ -253,7 +250,6 @@ public class OttBootStrapper implements Runnable {
     public RTPpacket receivePacket(int timeout){
         RTPpacket rtpPacket;
         try{
-            this.socketLock.lock();
             socket.setSoTimeout(timeout);
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
@@ -267,8 +263,6 @@ public class OttBootStrapper implements Runnable {
         } catch (IOException e){
             e.printStackTrace();
             return null;
-        } finally {
-            this.socketLock.unlock();
         }
         return rtpPacket;
     }
