@@ -70,8 +70,6 @@ public class Ott implements Runnable {
         try{
             this.running = false;
             this.socket = new DatagramSocket(this.port);
-            //this.socket = new DatagramSocket();     isto só é usado se o cliente n especificar a porta
-            //this.port = this.socket.getPort();
             System.out.println("Node is running!");
 
 
@@ -156,7 +154,7 @@ public class Ott implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
             System.out.println(">> Packet received.");
-            rtpPacket.printPacket();
+            rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }

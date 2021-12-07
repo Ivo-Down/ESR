@@ -63,7 +63,7 @@ public class OttBootStrapper implements Runnable {
 
 
             // ---> Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
-            new Thread(() -> {
+            /**new Thread(() -> {
 
 
                 // De x em x segundos vai verificar se os servidores ainda estão vivos
@@ -82,7 +82,7 @@ public class OttBootStrapper implements Runnable {
                     }
                 }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.MILLISECONDS);
 
-            }).start();
+            }).start();*/
 
             // TODO  -- ter apenas uma thread a receber do socket
             // TODO -- ter uma thread a tratar do processamento dos pacotes
@@ -234,7 +234,7 @@ public class OttBootStrapper implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
             System.out.println(">> Packet received.");
-            rtpPacket.printPacket();
+            rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
