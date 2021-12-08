@@ -179,7 +179,7 @@ public class RTPpacket{
         System.out.println("    SenderId " + this.getSenderId());
         System.out.println("    TimeStamp " + this.getTimeStamp());
         System.out.println("    PayloadSize " + this.getPayloadSize());
-        System.out.println("    Payload " + new String(this.getPayload()));
+        System.out.println("    Payload " + new String(this.getPayload()) + "\n");
     }
 
     public void printPacketHeader(){
@@ -187,7 +187,7 @@ public class RTPpacket{
         System.out.println("    SequenceNumber " + this.getSequenceNumber());
         System.out.println("    SenderId " + this.getSenderId());
         System.out.println("    TimeStamp " + this.getTimeStamp());
-        System.out.println("    PayloadSize " + this.getPayloadSize());
+        System.out.println("    PayloadSize " + this.getPayloadSize() + "\n");
     }
 
 

@@ -27,7 +27,7 @@ public class Ott implements Runnable {
         this.port = port;
         this.neighbors = new Table();
         this.requests = new Requests();
-        this.addressingTable = new AddressingTable();
+        this.addressingTable = new AddressingTable(this.id);
     }
 
 
@@ -78,13 +78,12 @@ public class Ott implements Runnable {
 
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
-            // Sending it's addressingTable info to it's neighbors - DVA
 
             while (running) {
-                System.out.println("--------------------------------");
+                System.out.println("----------------------------------------------------------------");
                 RTPpacket receivePacket = receivePacket();
                 processPacket(receivePacket);
-                System.out.println("--------------------------------");
+                System.out.println("----------------------------------------------------------------");
             }
             socket.close();
             System.out.println("Node is shutting down.");
@@ -150,7 +149,7 @@ public class Ott implements Runnable {
 
         for (Map.Entry<Integer, AddressingTable.MapValue> m : at.getDistanceVector().entrySet()){
 
-            // Se o nodo já existe na tabela de endereçamento
+            // Se o nodo já existe na tabela de endereçamento vai comparar as distâncias
             if(this.addressingTable.containsNode(m.getKey())){
                 //  Se a distancia for menor, atualizar a tabela
 
@@ -228,17 +227,17 @@ public class Ott implements Runnable {
 
                 byte[] data = packetReceived.getPayload();
                 this.neighbors = (Table) Table.deserialize(data);
-                System.out.println("Received neighbors information.");
+                System.out.println("-> Received neighbors information.\n");
 
                 // Inserts its neighbors in the addressing table
                 insertNeighborsInAddressingTable();
 
                 // Sends to each neighbor the addressing table
                 sendAddressingTable();
-
+                System.out.println(this.addressingTable.toString());
                 break;
 
-            case 2: //Receives addressingTable information from a neighbor
+            case 2: //Receives addressingTable information from a neighbor and updated addressingTable
 
                 byte[] addrdata = packetReceived.getPayload();
                 AddressingTable at = (AddressingTable) Table.deserialize(addrdata);
@@ -249,6 +248,8 @@ public class Ott implements Runnable {
                 // If the addressing table changed, notify the neighbors
                 if(updated)
                     sendAddressingTable(packetReceived.getSenderId());
+
+                System.out.println(this.addressingTable.toString());
 
                 break;
 

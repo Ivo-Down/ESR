@@ -1,8 +1,10 @@
+import java.io.Serializable;
 import java.util.HashMap;
+import java.util.Map;
 
-public class AddressingTable {
+public class AddressingTable implements Serializable {
 
-    class MapValue {
+    class MapValue implements Serializable{
         Integer nextNode;
         Integer cost ;
         public MapValue(Integer nextNode , Integer cost)  // key: nextNodeId    value: cost
@@ -14,6 +16,14 @@ public class AddressingTable {
         public int getCost(){
             return this.cost;
         }
+
+        @Override
+        public String toString() {
+            return "MapValue{" +
+                    "nextNode=" + nextNode +
+                    ", cost=" + cost +
+                    '}';
+        }
     }
 
 
@@ -21,9 +31,9 @@ public class AddressingTable {
 
 
 
-    public AddressingTable(){
+    public AddressingTable(Integer nodeId){
         this.distanceVector = new HashMap<>();
-        //this.setDistance(nodeId, nodeId, 0); // o custo para chegar a ele mesmo é 0
+        this.setDistance(nodeId, nodeId, 0); // o custo para chegar a ele mesmo é 0
     }
 
 
@@ -50,5 +60,14 @@ public class AddressingTable {
 
     public boolean containsNode(Integer nodeId){
         return this.distanceVector.containsKey(nodeId);
+    }
+
+    @Override
+    public String toString() {
+        String res = "";
+        for (Map.Entry<Integer, MapValue> e : this.distanceVector.entrySet()){
+            res += "destinyNodeId: " + e.getKey() +"\t"+ e.getValue().toString() + "\n";
+        }
+        return res;
     }
 }
