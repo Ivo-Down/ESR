@@ -9,12 +9,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class OttBootStrapper implements Runnable {
 
@@ -24,7 +18,7 @@ public class OttBootStrapper implements Runnable {
     private boolean running;
     private Table overlayNodes;
     private DatagramSocket socket;
-    private Requests requests;
+
 
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
@@ -35,7 +29,7 @@ public class OttBootStrapper implements Runnable {
         this.id = 1;
         this.port = Constants.DEFAULT_PORT;
         this.overlayNodes = this.getAllNodes();
-        this.requests = new Requests();
+
 
         try{
             this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
@@ -267,7 +261,7 @@ public class OttBootStrapper implements Runnable {
             case 0: //Node wants to get its neighbors
 
                 int nodeId = packetReceived.getSenderId();
-                System.out.println("A new neighbors request has been made.");
+                System.out.println("A new neighbors request has been made.\n");
                 Table requestedNeighbors = getNeighbors(nodeId);
 
                 byte[] data = Table.serialize(requestedNeighbors);

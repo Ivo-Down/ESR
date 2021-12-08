@@ -4,6 +4,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class Ott implements Runnable {
 
@@ -13,8 +14,10 @@ public class Ott implements Runnable {
     private boolean running;
     private Table neighbors;
     private DatagramSocket socket;
-    private Requests requests;
+    private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
+
+
 
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
@@ -26,7 +29,7 @@ public class Ott implements Runnable {
         this.ip = ip;
         this.port = port;
         this.neighbors = new Table();
-        this.requests = new Requests();
+        this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
     }
 
@@ -79,11 +82,35 @@ public class Ott implements Runnable {
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
 
+            new Thread(() -> {
+                System.out.println("===> LISTENING UDP");
+                while(this.running)
+                {
+                    RTPpacket receivePacket = receivePacket();
+                    this.packetsQueue.add(receivePacket);
+                }
+            }).start();
+
+            new Thread(() -> {
+                System.out.println("===> CONSUMING UDP");
+                while(this.running)
+                {
+                    try{
+                        RTPpacket receivePacket = this.packetsQueue.take();
+                        processPacket(receivePacket);
+                    } catch (InterruptedException e){
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
+
+            // TODO  Main thread -> por algo a correr aqui
             while (running) {
-                System.out.println("----------------------------------------------------------------");
+                /**System.out.println("----------------------------------------------------------------");
                 RTPpacket receivePacket = receivePacket();
                 processPacket(receivePacket);
-                System.out.println("----------------------------------------------------------------");
+                System.out.println("----------------------------------------------------------------");*/
             }
             socket.close();
             System.out.println("Node is shutting down.");
@@ -268,7 +295,41 @@ public class Ott implements Runnable {
                 ", port=" + port +
                 ", running=" + running +
                 ", neighbors=" + neighbors.toString() +
-                ", requests=" + requests +
+                ", requests=" + packetsQueue +
                 '}';
     }
+
+
+    /*
+    // ------------------------------ THREAD METHODS ------------------------------
+
+
+    // Is listening to the packets that arrive at the socket and stores them in packetsQueue
+    public static void listenUDP()
+    {
+        System.out.println("===> LISTENING UDP");
+        while(this.running)
+        {
+            RTPpacket receivePacket = receivePacket();
+            this.packetsQueue.add(receivePacket);
+        }
+    }
+
+    // Whenever there is a packet on the queue, consumes it (FIFO order)
+    public static void consumePackets()
+    {
+        System.out.println("===> CONSUMING UDP");
+        while(this.running)
+        {
+            try{
+                RTPpacket receivePacket = this.packetsQueue.take();
+                processPacket(receivePacket);
+            } catch (InterruptedException e){
+                e.printStackTrace();
+            }
+        }
+    }
+
+     */
+
 }
