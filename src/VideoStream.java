@@ -7,9 +7,7 @@ public class VideoStream {
   FileInputStream fis; //video file
   int frame_nb; //current frame nb
 
-  //-----------------------------------
-  //constructor
-  //-----------------------------------
+  //-------------------------------CONSTRUCTOR-------------------------------
   public VideoStream(String filename) throws Exception{
 
     //init variables
@@ -17,12 +15,9 @@ public class VideoStream {
     frame_nb = 0;
   }
 
-  //-----------------------------------
-  // getnextframe
+
   //returns the next frame as an array of byte and the size of the frame
-  //-----------------------------------
-  public int getnextframe(byte[] frame) throws Exception
-  {
+  public int getnextframe(byte[] frame) throws Exception {
     int length = 0;
     String length_string;
     byte[] frame_length = new byte[5];
