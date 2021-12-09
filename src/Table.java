@@ -15,7 +15,7 @@ public class Table implements Serializable {
 
 
     public void addNode(InetAddress ip, int port, int nodeId){
-        NodeInfo nodeInfo = new NodeInfo(ip, port, NodeInfo.nodeState.OFF);
+        NodeInfo nodeInfo = new NodeInfo(ip, port, NodeInfo.nodeState.OFF, nodeId);
         neighborNodes.put(nodeId, nodeInfo);
     }
 

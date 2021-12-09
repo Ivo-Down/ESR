@@ -11,18 +11,16 @@ public class NodeInfo implements Serializable {
     private InetAddress nodeIp;
     private Integer nodePort;
     private nodeState nodeState;
+    private Integer nodeId;
 
-    public NodeInfo(InetAddress ip, int port, nodeState state){
+    public NodeInfo(InetAddress ip, int port, nodeState state, int nodeId){
         this.nodeIp = ip;
         this.nodePort = port;
         this.nodeState = state;
+        this.nodeId = nodeId;
     }
 
-    public NodeInfo(InetAddress ip, int port){
-        this.nodeIp = ip;
-        this.nodePort = port;
-        this.nodeState = nodeState.ON;
-    }
+
 
     public InetAddress getNodeIp() {
         return nodeIp;
@@ -34,6 +32,14 @@ public class NodeInfo implements Serializable {
 
     public int getNodePort() {
         return nodePort;
+    }
+
+    public void setNodeId(Integer nodeId) {
+        this.nodeId = nodeId;
+    }
+
+    public int getNodeId() {
+        return nodeId;
     }
 
     public void setNodePort(int nodePort) {
