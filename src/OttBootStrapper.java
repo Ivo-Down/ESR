@@ -3,6 +3,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -54,6 +55,17 @@ public class OttBootStrapper implements Runnable {
             this.running = true;
             System.out.println("Bootstrapper is running!");
 
+            //Thread para iniciar Servidor a la Ivo :D
+            new Thread(() -> {
+                System.out.println("===> SHARING VIDEO...");
+
+                    File f = new File("src/movie.Mjpeg");
+                    if (f.exists()) {
+                        //Create a Main object
+                        Streamer s = new Streamer("src/movie.Mjpeg");
+                    } else
+                        System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
+                }).start();
 
 
             // ---> Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar

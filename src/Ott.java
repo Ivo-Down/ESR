@@ -16,6 +16,7 @@ public class Ott implements Runnable {
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
+    private boolean isClient;
 
 
 
@@ -24,13 +25,14 @@ public class Ott implements Runnable {
 
     // ------------------------------ CONSTRUCTORS ------------------------------
 
-    public Ott(Integer id, InetAddress ip, Integer port){
+    public Ott(Integer id, InetAddress ip, Integer port, boolean isclient){
         this.id = id;
         this.ip = ip;
         this.port = port;
         this.neighbors = new Table();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
+        this.isClient = isclient;
     }
 
 
@@ -78,6 +80,12 @@ public class Ott implements Runnable {
             this.socket = new DatagramSocket(this.port);
             System.out.println("Node is running!");
 
+            //Thread para iniciar Cliente, a la Ivo :D
+            if(this.isClient) {
+                new Thread(() -> {
+                    Client c = new Client();
+                }).start();
+            }
 
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
