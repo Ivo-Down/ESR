@@ -27,7 +27,7 @@ public class OrrRunner {
                     break;
 
                 default:
-                    System.out.println("Looks like something is wrong...");
+                    System.out.println("Looks like something is wrong!...");
       }
 
         } catch (UnknownHostException e){
