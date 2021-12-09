@@ -51,7 +51,7 @@ public class Client {
 
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Client() {
+  public Client(DatagramSocket socket) {
 
     //------------------------------BUILD GUI-------------------------------
     //Frame
@@ -108,7 +108,7 @@ public class Client {
 
     try {
       // Socket e Video
-	  RTPsocket = new DatagramSocket(RTP_RCV_PORT); //init RTP socket (o mesmo para o cliente e servidor)
+	  RTPsocket = socket; //new DatagramSocket(RTP_RCV_PORT); //init RTP socket (o mesmo para o cliente e servidor)
       RTPsocket.setSoTimeout(5000); // setimeout to 5s
     } catch (SocketException e) {
         System.out.println("Cliente: erro no socket: " + e.getMessage());

@@ -61,8 +61,8 @@ public class OttBootStrapper implements Runnable {
 
                     File f = new File("src/movie.Mjpeg");
                     if (f.exists()) {
-                        //Create a Main object
-                        Streamer s = new Streamer("src/movie.Mjpeg");
+                        // TODO MUDAR -> SO STREAMA PARA O CLIENT 11
+                        Streamer s = new Streamer("src/movie.Mjpeg","127.0.0.1", 8097);
                     } else
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();

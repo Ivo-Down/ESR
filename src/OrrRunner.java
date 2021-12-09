@@ -13,15 +13,15 @@ public class OrrRunner {
                     break;
 
                 case 1: // "ip:port:node_id"
-                    String[] info = args[0].split(":");
-                    Ott overlayNode = new Ott(Integer.parseInt(info[2]), InetAddress.getByName(info[0]), Integer.parseInt(info[1]),false);
+                    String[] info1 = args[0].split(":");
+                    Ott overlayNode = new Ott(Integer.parseInt(info1[2]), InetAddress.getByName(info1[0]), Integer.parseInt(info1[1]),false);
                     System.out.println(overlayNode);
                     overlayNode.run();
                     break;
 
-                case 2: // "ip:port:nodo_id" "c"
-                    String[] infoo = args[0].split(":");
-                    Ott overlayNodeCli = new Ott(Integer.parseInt(infoo[2]), InetAddress.getByName(infoo[0]), Integer.parseInt(infoo[1]),true);
+                case 2: // "ip:port:nodo_id" "-c"
+                    String[] info2 = args[0].split(":");
+                    Ott overlayNodeCli = new Ott(Integer.parseInt(info2[2]), InetAddress.getByName(info2[0]), Integer.parseInt(info2[1]),true);
                     System.out.println(overlayNodeCli);
                     overlayNodeCli.run();
                     break;

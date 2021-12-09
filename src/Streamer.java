@@ -42,7 +42,7 @@ public class Streamer extends JFrame implements ActionListener {
 
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Streamer(String Video) {
+  public Streamer(String Video, String ipToStream, Integer portToStream) {
 
       //init Frame
       super("Streamer");
@@ -58,11 +58,12 @@ public class Streamer extends JFrame implements ActionListener {
       try {
 
 	    RTPsocket = new DatagramSocket(); //init RTP socket
-        ClientIPAddr = InetAddress.getByName("127.0.0.1");
+        ClientIPAddr = InetAddress.getByName(ipToStream);
+           RTP_dest_port = portToStream;
         System.out.println("Servidor: socket " + ClientIPAddr);
 
 	    video = new VideoStream(VideoFileName); //init the VideoStream object:
-        System.out.println("Servidor: vai enviar video da file " + VideoFileName);
+        System.out.println("Servidor: vai enviar video do file " + VideoFileName);
 
       } catch (SocketException e) {
         System.out.println("Servidor: erro no socket: " + e.getMessage());
@@ -104,7 +105,7 @@ public class Streamer extends JFrame implements ActionListener {
                     int image_length = video.getnextframe(sBuf);
 
                     //Builds an RTPpacket object containing the frame
-                    RTPpacket rtp_packet = new RTPpacket(sBuf, MJPEG_TYPE, imagenb, imagenb * FRAME_PERIOD, image_length);
+                    RTPpacket rtp_packet = new RTPpacket(sBuf, MJPEG_TYPE, imagenb, 1, image_length);
 
                     //get to total length of the full rtp packet to send
                     int packet_length = rtp_packet.getPacketSize();
@@ -129,7 +130,13 @@ public class Streamer extends JFrame implements ActionListener {
                 }
             } else {
                 //if we have reached the end of the video file, stop the timer
-                sTimer.stop();
+                //sTimer.stop();
+                try{
+                    video = new VideoStream(VideoFileName);
+                    imagenb = 0;
+                } catch (Exception exception){
+                    exception.printStackTrace();
+                }
             }
 
   }

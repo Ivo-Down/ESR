@@ -25,14 +25,14 @@ public class Ott implements Runnable {
 
     // ------------------------------ CONSTRUCTORS ------------------------------
 
-    public Ott(Integer id, InetAddress ip, Integer port, boolean isclient){
+    public Ott(Integer id, InetAddress ip, Integer port, boolean isClient){
         this.id = id;
         this.ip = ip;
         this.port = port;
         this.neighbors = new Table();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
-        this.isClient = isclient;
+        this.isClient = isClient;
     }
 
 
@@ -80,37 +80,41 @@ public class Ott implements Runnable {
             this.socket = new DatagramSocket(this.port);
             System.out.println("Node is running!");
 
-            //Thread para iniciar Cliente, a la Ivo :D
-            if(this.isClient) {
-                new Thread(() -> {
-                    Client c = new Client();
-                }).start();
-            }
-
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
 
-            new Thread(() -> {
-                System.out.println("===> LISTENING UDP");
-                while(this.running)
-                {
-                    RTPpacket receivePacket = receivePacket();
-                    this.packetsQueue.add(receivePacket);
-                }
-            }).start();
+            // If it is a client, only run the client thread
+            if(this.isClient) {
+                new Thread(() -> {
+                    Client c = new Client(this.socket);
+                }).start();
+            }
 
-            new Thread(() -> {
-                System.out.println("===> CONSUMING UDP");
-                while(this.running)
-                {
-                    try{
-                        RTPpacket receivePacket = this.packetsQueue.take();
-                        processPacket(receivePacket);
-                    } catch (InterruptedException e){
-                        e.printStackTrace();
+            // Normal overlay node
+            else{
+                new Thread(() -> {
+                    System.out.println("===> LISTENING UDP");
+                    while(this.running)
+                    {
+                        RTPpacket receivePacket = receivePacket();
+                        this.packetsQueue.add(receivePacket);
                     }
-                }
-            }).start();
+                }).start();
+
+                new Thread(() -> {
+                    System.out.println("===> CONSUMING UDP");
+                    while(this.running)
+                    {
+                        try{
+                            RTPpacket receivePacket = this.packetsQueue.take();
+                            processPacket(receivePacket);
+                        } catch (InterruptedException e){
+                            e.printStackTrace();
+                        }
+                    }
+                }).start();
+            }
+
 
 
             // TODO  Main thread -> por algo a correr aqui
@@ -120,6 +124,7 @@ public class Ott implements Runnable {
                 processPacket(receivePacket);
                 System.out.println("----------------------------------------------------------------");*/
             }
+
             socket.close();
             System.out.println("Node is shutting down.");
         } catch (IOException e){
