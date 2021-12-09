@@ -19,6 +19,7 @@ public class Streamer extends JFrame implements ActionListener {
   JLabel label;
 
 
+  
   //-------------------------------RTP VARIABLES--------------------------
   DatagramPacket senddp; //UDP packet containing the video frames (to send)
   DatagramSocket RTPsocket; //socket to be used to send and receive UDP packet

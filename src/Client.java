@@ -98,6 +98,7 @@ public class Client {
     f.setSize(new Dimension(390,430));
     f.setVisible(true);
 
+
     //Init para a parte do cliente
     //--------------------------
     cTimer = new Timer(20, new clientTimerListener());
