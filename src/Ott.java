@@ -290,6 +290,7 @@ public class Ott implements Runnable {
 
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
+                System.out.println("-> Received isAlive check. Replying.\n");
                 sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
         }

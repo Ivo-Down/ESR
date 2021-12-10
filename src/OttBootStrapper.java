@@ -15,6 +15,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class OttBootStrapper implements Runnable {
 
@@ -23,6 +25,7 @@ public class OttBootStrapper implements Runnable {
     private Integer port;
     private boolean running;
     private Table overlayNodes;
+    private Lock overlayNodesLock = new ReentrantLock();  //temos pelo menos duas threads a usar a Table 
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
 
@@ -75,7 +78,7 @@ public class OttBootStrapper implements Runnable {
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
 
-            /**
+
             new Thread(() -> {
                 // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
                 System.out.println("===> CHECKING IF NODES ARE ALIVE");
@@ -83,32 +86,33 @@ public class OttBootStrapper implements Runnable {
                 // De x em x segundos vai verificar se os servidores ainda estão vivos
                 ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
                 scheduler.scheduleAtFixedRate(() -> {
+
                     try {
                         for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
                             // Get nodes that are flagged with 'ON'
                             //TODO ver se é preciso lock para table
                             Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
 
-                            // For each online node, check if it is alive
+                            // For each online node, check if it is alive and change its state to UNKNOWN
                             for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
                                 sendIsAliveCheck(e.getKey(), e.getValue());
 
                             Thread.sleep(Constants.TIMEOUT_TIME);
                         }
 
-                        // For each unknown node, check if they have sent a confirmation
+                        // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
                         for(Map.Entry<Integer, NodeInfo> e: this.overlayNodes.getMap().entrySet())
-                            if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+                            if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN))
                                 this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
-                            }
 
 
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
+
                 }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
 
-            }).start();*/
+            }).start();
 
             new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
