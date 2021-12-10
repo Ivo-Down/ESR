@@ -10,6 +10,11 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class OttBootStrapper implements Runnable {
 
@@ -19,6 +24,7 @@ public class OttBootStrapper implements Runnable {
     private boolean running;
     private Table overlayNodes;
     private DatagramSocket socket;
+    private LinkedBlockingQueue<RTPpacket> packetsQueue;
 
 
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
@@ -30,6 +36,7 @@ public class OttBootStrapper implements Runnable {
         this.id = 1;
         this.port = Constants.DEFAULT_PORT;
         this.overlayNodes = this.getAllNodes();
+        this.packetsQueue = new LinkedBlockingQueue<>();
 
 
         try{
@@ -55,9 +62,10 @@ public class OttBootStrapper implements Runnable {
             this.running = true;
             System.out.println("Bootstrapper is running!");
 
-            //Thread para iniciar Servidor a la Ivo :D
+
+
             new Thread(() -> {
-                System.out.println("===> SHARING VIDEO...");
+                System.out.println("===> SHARING VIDEO");
 
                     File f = new File("src/movie.Mjpeg");
                     if (f.exists()) {
@@ -67,44 +75,61 @@ public class OttBootStrapper implements Runnable {
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
 
-
-            // ---> Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
-            /**new Thread(() -> {
-
+            /**
+            new Thread(() -> {
+                // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
+                System.out.println("===> CHECKING IF NODES ARE ALIVE");
 
                 // De x em x segundos vai verificar se os servidores ainda estão vivos
                 ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
                 scheduler.scheduleAtFixedRate(() -> {
                     try {
-                        // Get nodes that are flagged with 'ON'
-                        Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
+                        for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
+                            // Get nodes that are flagged with 'ON'
+                            //TODO ver se é preciso lock para table
+                            Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
 
-                        // For each online node, check if it is alive
-                        for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
-                            checkIfServerAlive(e.getKey(), e.getValue());  //todo aqui dentro só se vai mandar o isAliveCheck, n se vai ouvir
+                            // For each online node, check if it is alive
+                            for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
+                                sendIsAliveCheck(e.getKey(), e.getValue());
+
+                            Thread.sleep(Constants.TIMEOUT_TIME);
+                        }
+
+                        // For each unknown node, check if they have sent a confirmation
+                        for(Map.Entry<Integer, NodeInfo> e: this.overlayNodes.getMap().entrySet())
+                            if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+                                this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                            }
+
 
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.MILLISECONDS);
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
 
             }).start();*/
 
-            // TODO  -- ter apenas uma thread a receber do socket
-            // TODO -- ter uma thread a tratar do processamento dos pacotes
+            new Thread(() -> {
+                System.out.println("===> LISTENING UDP");
+                while(this.running)
+                {
+                    RTPpacket receivePacket = receivePacket();
+                    if(receivePacket!=null)
+                        this.packetsQueue.add(receivePacket);
+                }
+            }).start();
 
 
-            // ---> Main thread listening to node requests and replying
+            // ---> Main thread consuming the RTPpackets
+            System.out.println("===> CONSUMING UDP");
             while(this.running){
-                RTPpacket receivePacket = receivePacket();
-                if(receivePacket!=null)
+                try{
+                    RTPpacket receivePacket = this.packetsQueue.take();
                     processPacket(receivePacket);
-
-                // Check if there are any packets to send and send them
-                // Processa chunks que tenham sido ignorados, como novos servidores
-                //processStoredChunks();
-                //Thread.sleep(100);
-                //table.printTable();
+                } catch (InterruptedException e){
+                    e.printStackTrace();
+                }
             }
 
 
@@ -121,7 +146,7 @@ public class OttBootStrapper implements Runnable {
 
 
 
-    public boolean checkIfServerAlive (int id, NodeInfo nodeInfo){
+    /*public boolean checkIfServerAlive (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
 
         for(int i=1; i<=Constants.TRIES_UNTIL_TIMEOUT; i++){
@@ -144,8 +169,13 @@ public class OttBootStrapper implements Runnable {
         this.overlayNodes.setNodeState(id, NodeInfo.nodeState.OFF);
         System.out.println("Server "+id+ " timed out.");
         return false;
-    }
+    }*/
 
+    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+        System.out.println("Checking if node "+ id+" is alive.");
+        sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+        this.overlayNodes.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
+    }
 
 
 
@@ -287,6 +317,7 @@ public class OttBootStrapper implements Runnable {
 
             case 6: //IsAlive confirmation
                 System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
+                this.overlayNodes.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.ON);
                 break;
         }
     }

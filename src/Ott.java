@@ -83,50 +83,45 @@ public class Ott implements Runnable {
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
 
-            // If it is a client, only run the client thread
+            // If it is a client, only run the client thread, which will be the main thread
             if(this.isClient) {
-                new Thread(() -> {
-                    Client c = new Client(this.socket);
-                }).start();
+                //new Thread(() -> {
+                Client c = new Client(this.socket);
+                //}).start();
+
+                //TODO implementar o resto da logica do cliente (pedir ao servidor, receber ott node...)
             }
 
-            // Normal overlay node
+
+            // Normal overlay node, all overlay node code goes here
             else{
                 new Thread(() -> {
                     System.out.println("===> LISTENING UDP");
                     while(this.running)
                     {
                         RTPpacket receivePacket = receivePacket();
-                        this.packetsQueue.add(receivePacket);
+                        if(receivePacket!=null)
+                            this.packetsQueue.add(receivePacket);
                     }
                 }).start();
 
-                new Thread(() -> {
-                    System.out.println("===> CONSUMING UDP");
-                    while(this.running)
-                    {
-                        try{
-                            RTPpacket receivePacket = this.packetsQueue.take();
-                            processPacket(receivePacket);
-                        } catch (InterruptedException e){
-                            e.printStackTrace();
-                        }
+                // ---> Main thread consuming the RTPpackets
+                System.out.println("===> CONSUMING UDP");
+                while(this.running){
+                    try{
+                        RTPpacket receivePacket = this.packetsQueue.take();
+                        processPacket(receivePacket);
+                    } catch (InterruptedException e){
+                        e.printStackTrace();
                     }
-                }).start();
+                }
+
+
+                socket.close();
+                System.out.println("Node is shutting down.");
             }
 
 
-
-            // TODO  Main thread -> por algo a correr aqui
-            while (running) {
-                /**System.out.println("----------------------------------------------------------------");
-                RTPpacket receivePacket = receivePacket();
-                processPacket(receivePacket);
-                System.out.println("----------------------------------------------------------------");*/
-            }
-
-            socket.close();
-            System.out.println("Node is shutting down.");
         } catch (IOException e){
             e.printStackTrace();
         }
