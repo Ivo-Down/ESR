@@ -1,0 +1,32 @@
+Bom dia Sr Ivo,
+
+sim, eu com medo que ainda não tenhas desativado as notificações não tive coragem de mandar mensagem ahaha
+
+
+Mas pronto:
+
+- Locks da Table neighbors adicionados e a funcionar;
+
+- A parte de Checkar se um Nodo está vivo está a funcionar perfeitamente:
+        -> Testei com Thread.sleep(), iniciei os nodos e passado uns segundos dava STOP;
+        -> Testei tudo com um Bootstrapper, o client 11 a receber direitinho, e o Node 2, que fui matando;
+        -> Para ver isto tudo fica fácil acompanhando a evolução da Tabela de Nodos (e respetivo estado) em tempo real. Não retirei o print para se quiseres ver;
+
+
+    Pequenas observações:
+
+ - Neste momento o Nodo referente ao cliente vai sempre acabar por ficar OFF na tabela, pois o Bootstrapper
+ vai tentar contactar e o Cliente não tem como responder: o Cliente não tem a thread de processar o packet e por 
+ isso não envia resposta. Ou será que estou a pensar mal e não é necessário saber se ele está vivo?
+ PS: Não mexi pq queria discutir isto contigo, depressa se resolve independentemente da nossa decisão.
+
+ - A escolha dos estados está perfeita, vai de acordo ao que o stor sugeriu;
+
+ - O valor das constantes vou perguntar ao stor na terça-feira, é algo importante pq convinha termos valores
+ aproximados da realidade;
+
+
+Testei tudo antes de dar PUSH.
+
+ Entretanto não desenvolvi mais nada pq não sabia qual é o próximo passo. Acabei então por me dedicar um
+ pouco a Nuvem. Amanhã quando reunirmos decidimos o próximo passo disto :)
