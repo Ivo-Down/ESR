@@ -90,22 +90,41 @@ public class OttBootStrapper implements Runnable {
                     try {
                         for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
                             // Get nodes that are flagged with 'ON'
-                            //TODO ver se é preciso lock para table
-                            Table onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
+
+                            Table onlineNodes;
+                            try{
+                                this.overlayNodesLock.lock();
+                                onlineNodes = this.overlayNodes.getNodesWithState(NodeInfo.nodeState.ON);
+                            }
+                            finally {
+                                this.overlayNodesLock.unlock();
+                            }
+
 
                             // For each online node, check if it is alive and change its state to UNKNOWN
                             for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
                                 sendIsAliveCheck(e.getKey(), e.getValue());
 
+                            // Waits for the nodes to respond
                             Thread.sleep(Constants.TIMEOUT_TIME);
                         }
 
                         // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
-                        for(Map.Entry<Integer, NodeInfo> e: this.overlayNodes.getMap().entrySet())
-                            if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN))
-                                this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                        try{
+                            this.overlayNodesLock.lock();
+                            for(Map.Entry<Integer, NodeInfo> e: this.overlayNodes.getMap().entrySet()){
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+                                    this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                                    System.out.println("Node " + e.getKey() + " timed out.");
+                                }
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED))
+                                    this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
+                            }
+                        }
+                        finally {
+                            this.overlayNodesLock.unlock();
+                        }
                         this.overlayNodes.printTable();
-
 
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -114,6 +133,8 @@ public class OttBootStrapper implements Runnable {
                 }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
 
             }).start();
+
+
 
             new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
@@ -126,7 +147,8 @@ public class OttBootStrapper implements Runnable {
             }).start();
 
 
-            // ---> Main thread consuming the RTPpackets
+
+            // ---> Main thread
             System.out.println("===> CONSUMING UDP");
             while(this.running){
                 try{
@@ -147,39 +169,16 @@ public class OttBootStrapper implements Runnable {
 
 
 
-
-
-
-
-    /*public boolean checkIfServerAlive (int id, NodeInfo nodeInfo){
-        System.out.println("Checking if node "+ id+" is alive.");
-
-        for(int i=1; i<=Constants.TRIES_UNTIL_TIMEOUT; i++){
-
-            sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-            RTPpacket receivedPacket = receivePacket(i*1000);  //TODO TIRAR ISTO DAQUI OU USAR OUTRO SOCKET OU ESTRUTURA E UM TIMER
-
-            if(receivedPacket!=null){
-                System.out.println("Reached node "+ id+" with success.");
-                processPacket(receivedPacket);
-
-                this.overlayNodes.setNodeState(id, NodeInfo.nodeState.ON);
-                return true;
-            }
-            else{
-                System.out.println("Failed to reach node "+ id+". Tentative number "+i+".");
-                this.overlayNodes.setNodeState(id, NodeInfo.nodeState.OFF);
-            }
-        }
-        this.overlayNodes.setNodeState(id, NodeInfo.nodeState.OFF);
-        System.out.println("Server "+id+ " timed out.");
-        return false;
-    }*/
-
     public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
         sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-        this.overlayNodes.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
+        try{
+            this.overlayNodesLock.lock();
+            this.overlayNodes.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
+        }
+        finally {
+            this.overlayNodesLock.unlock();
+        }
     }
 
 
@@ -214,10 +213,17 @@ public class OttBootStrapper implements Runnable {
             }
 
             // Como a info de cada overlay node já está em memória
-            for (Integer i: neighbors){
-                NodeInfo nodeInfo = this.overlayNodes.getNodeInfo(i);
-                res.addNode(i, nodeInfo);
+            try{
+                this.overlayNodesLock.lock();
+                for (Integer i: neighbors){
+                    NodeInfo nodeInfo = this.overlayNodes.getNodeInfo(i);
+                    res.addNode(i, nodeInfo);
+                }
             }
+            finally {
+                this.overlayNodesLock.unlock();
+            }
+
 
         } catch (IOException | ParseException e){
             e.printStackTrace();
@@ -263,7 +269,6 @@ public class OttBootStrapper implements Runnable {
         }
     }
 
-
     public RTPpacket receivePacket(){
         RTPpacket rtpPacket = new RTPpacket();
         try{
@@ -302,6 +307,7 @@ public class OttBootStrapper implements Runnable {
         return rtpPacket;
     }
 
+
     public void processPacket(RTPpacket packetReceived){
         switch (packetReceived.getPacketType()) {
 
@@ -314,15 +320,32 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = Table.serialize(requestedNeighbors);
 
                 // Updating the state of the overlay to ready
-                this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.ON);
+                try{
+                    this.overlayNodesLock.lock();
+                    this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.ON);
+                }
+                finally {
+                    this.overlayNodesLock.unlock();
+                }
+
 
                 // Sending the answer
                 sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
+
+
+
             case 6: //IsAlive confirmation
                 System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
-                this.overlayNodes.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.ON);
+                try{
+                    this.overlayNodesLock.lock();
+                    this.overlayNodes.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
+                }
+                finally {
+                    this.overlayNodesLock.unlock();
+                }
+
                 break;
         }
     }

@@ -5,7 +5,7 @@ public class NodeInfo implements Serializable {
 
     private static final long serialVersionUID = 5249369646723187393L;
     enum nodeState {
-        ON, OFF, UNKNOWN       //TODO decidir os estados a termos
+        ON, OFF, UNKNOWN, CHECKED
     }
 
     private InetAddress nodeIp;
