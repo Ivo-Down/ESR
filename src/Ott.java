@@ -156,32 +156,19 @@ public class Ott implements Runnable {
 
 
     public void insertNeighborsInAddressingTable(){
-        neighborsLock.lock();
-        try{
-            for (NodeInfo n : this.neighbors.getNeighborNodes()) {
-                this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
-            }
-        }
-        catch(Exception e) {
-          e.printStackTrace();
-        }
-        finally{
-        neighborsLock.unlock();
-        }
+        for (NodeInfo n : this.neighbors.getNeighborNodes())
+            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
     }
 
 
     // For each neighbor, sends the addressingTable
     public void sendAddressingTable(){
-        neighborsLock.lock();
+        byte[] data = Table.serialize(this.addressingTable);  //todo passar o serialize para fora do table
+
         try {
-            byte[] data = Table.serialize(this.addressingTable);  //todo passar o serialize para fora do table
-            for (NodeInfo n : this.neighbors.getNeighborNodes()) {
-                    sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
-            }
-        }
-        catch(Exception e) {
-                e.printStackTrace();
+            neighborsLock.lock();
+            for (NodeInfo n : this.neighbors.getNeighborNodes())
+                sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
         }
         finally{
                 neighborsLock.unlock();
@@ -190,16 +177,15 @@ public class Ott implements Runnable {
 
     // For each neighbor except one, sends the addressingTable
     public void sendAddressingTable(Integer excludedNodeId){
-        neighborsLock.lock();
+        byte[] data = Table.serialize(this.addressingTable);
+
         try {
-             byte[] data = Table.serialize(this.addressingTable);
-             for (NodeInfo n : this.neighbors.getNeighborNodes()){
-                if(n.getNodeId()!= excludedNodeId)
-                sendPacket(data, 2, 1, this.id, n.getNodeIp() , n.getNodePort());
-             }
-        }
-        catch(Exception e) {
-            e.printStackTrace();
+            neighborsLock.lock();
+            for (NodeInfo n : this.neighbors.getNeighborNodes()){
+                if(n.getNodeId()!= excludedNodeId){
+                    sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
+                }
+            }
         }
         finally{
             neighborsLock.unlock();
@@ -288,19 +274,20 @@ public class Ott implements Runnable {
 
         switch (packetReceived.getPacketType()) {
 
+
+
             case 1: //Receives neighbors information
 
                 byte[] data = packetReceived.getPayload();
-                neighborsLock.lock();
+
                 try {
+                    neighborsLock.lock();
                     this.neighbors = (Table) Table.deserialize(data);
-                }
-                catch(Exception e) {
-                    e.printStackTrace();
                 }
                 finally{
                     neighborsLock.unlock();
                 }
+
                 System.out.println("-> Received neighbors information.\n");
 
                 // Inserts its neighbors in the addressing table
@@ -310,6 +297,8 @@ public class Ott implements Runnable {
                 sendAddressingTable();
                 System.out.println(this.addressingTable.toString());
                 break;
+
+
 
             case 2: //Receives addressingTable information from a neighbor and updated addressingTable
 
@@ -326,6 +315,8 @@ public class Ott implements Runnable {
                 System.out.println(this.addressingTable.toString());
 
                 break;
+
+
 
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
@@ -348,36 +339,6 @@ public class Ott implements Runnable {
     }
 
 
-    /*
-    // ------------------------------ THREAD METHODS ------------------------------
 
-
-    // Is listening to the packets that arrive at the socket and stores them in packetsQueue
-    public static void listenUDP()
-    {
-        System.out.println("===> LISTENING UDP");
-        while(this.running)
-        {
-            RTPpacket receivePacket = receivePacket();
-            this.packetsQueue.add(receivePacket);
-        }
-    }
-
-    // Whenever there is a packet on the queue, consumes it (FIFO order)
-    public static void consumePackets()
-    {
-        System.out.println("===> CONSUMING UDP");
-        while(this.running)
-        {
-            try{
-                RTPpacket receivePacket = this.packetsQueue.take();
-                processPacket(receivePacket);
-            } catch (InterruptedException e){
-                e.printStackTrace();
-            }
-        }
-    }
-
-     */
 
 }
