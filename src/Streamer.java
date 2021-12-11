@@ -118,9 +118,9 @@ public class Streamer extends JFrame implements ActionListener {
                     senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
                     RTPsocket.send(senddp);
 
-                    System.out.println("Send frame #" + imagenb);
+                   // System.out.println("Send frame #" + imagenb);
                     //print the header bitstream
-                    rtp_packet.printPacketHeader();
+                    //rtp_packet.printPacketHeader();
 
                     //update GUI
                     label.setText("Send frame #" + imagenb);
