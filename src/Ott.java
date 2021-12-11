@@ -163,7 +163,7 @@ public class Ott implements Runnable {
 
     // For each neighbor, sends the addressingTable
     public void sendAddressingTable(){
-        byte[] data = Table.serialize(this.addressingTable);  //todo passar o serialize para fora do table
+        byte[] data = StaticMethods.serialize(this.addressingTable);  //todo passar o serialize para fora do table
 
         try {
             neighborsLock.lock();
@@ -177,7 +177,8 @@ public class Ott implements Runnable {
 
     // For each neighbor except one, sends the addressingTable
     public void sendAddressingTable(Integer excludedNodeId){
-        byte[] data = Table.serialize(this.addressingTable);
+        System.out.println("Sending updated table to neighbors.");
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
         try {
             neighborsLock.lock();
@@ -219,6 +220,10 @@ public class Ott implements Runnable {
                 updated = true;
             }
         }
+        if(updated)
+            System.out.println("Updated addressing table!");
+        else
+            System.out.println("Did not update addressing table.");
         return updated;
     }
 
@@ -261,7 +266,7 @@ public class Ott implements Runnable {
             Integer fromPort = packet.getPort();
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received.");
+            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
             rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
@@ -282,7 +287,7 @@ public class Ott implements Runnable {
 
                 try {
                     neighborsLock.lock();
-                    this.neighbors = (Table) Table.deserialize(data);
+                    this.neighbors = (Table) StaticMethods.deserialize(data);
                 }
                 finally{
                     neighborsLock.unlock();
@@ -303,17 +308,17 @@ public class Ott implements Runnable {
             case 2: //Receives addressingTable information from a neighbor and updated addressingTable
 
                 byte[] addrdata = packetReceived.getPayload();
-                AddressingTable at = (AddressingTable) Table.deserialize(addrdata);
+                AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
 
                 // Update addressing table
                 boolean updated = updateAddressingTable(at, packetReceived.getSenderId());
 
                 // If the addressing table changed, notify the neighbors
-                if(updated)
-                    sendAddressingTable(packetReceived.getSenderId());
-
-                System.out.println(this.addressingTable.toString());
-
+                if(updated){
+                    //sendAddressingTable(packetReceived.getSenderId());   nota: assim resolve o problema de o último nó a entrar n ficar atualizado
+                    sendAddressingTable();
+                    System.out.println(this.addressingTable.toString());
+                }
                 break;
 
 
