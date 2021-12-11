@@ -104,6 +104,7 @@ public class OttBootStrapper implements Runnable {
                         for(Map.Entry<Integer, NodeInfo> e: this.overlayNodes.getMap().entrySet())
                             if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN))
                                 this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                        this.overlayNodes.printTable();
 
 
                     } catch (Exception e) {
@@ -256,7 +257,7 @@ public class OttBootStrapper implements Runnable {
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
             System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
-            newPacket.printPacketHeader();
+            //newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -274,7 +275,7 @@ public class OttBootStrapper implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
             System.out.println(">> Packet received.");
-            rtpPacket.printPacketHeader();
+            //rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -293,7 +294,7 @@ public class OttBootStrapper implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
             System.out.println(">> Packet received.");
-            rtpPacket.printPacket();
+           // rtpPacket.printPacket();
         } catch (IOException e){
             e.printStackTrace();
             return null;

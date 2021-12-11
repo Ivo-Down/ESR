@@ -5,6 +5,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Ott implements Runnable {
 
@@ -12,7 +14,10 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
+
     private Table neighbors;
+    private Lock neighborsLock = new ReentrantLock();
+
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
@@ -151,28 +156,53 @@ public class Ott implements Runnable {
 
 
     public void insertNeighborsInAddressingTable(){
-        for (NodeInfo n : this.neighbors.getNeighborNodes()){
-            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
+        neighborsLock.lock();
+        try{
+            for (NodeInfo n : this.neighbors.getNeighborNodes()) {
+                this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
+            }
+        }
+        catch(Exception e) {
+          e.printStackTrace();
+        }
+        finally{
+        neighborsLock.unlock();
         }
     }
 
 
     // For each neighbor, sends the addressingTable
     public void sendAddressingTable(){
-        byte[] data = Table.serialize(this.addressingTable);  //todo passar o serialize para fora do table
-
-        for (NodeInfo n : this.neighbors.getNeighborNodes()){
-            sendPacket(data, 2, 1, this.id, n.getNodeIp() , n.getNodePort());
+        neighborsLock.lock();
+        try {
+            byte[] data = Table.serialize(this.addressingTable);  //todo passar o serialize para fora do table
+            for (NodeInfo n : this.neighbors.getNeighborNodes()) {
+                    sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
+            }
+        }
+        catch(Exception e) {
+                e.printStackTrace();
+        }
+        finally{
+                neighborsLock.unlock();
         }
     }
 
     // For each neighbor except one, sends the addressingTable
     public void sendAddressingTable(Integer excludedNodeId){
-        byte[] data = Table.serialize(this.addressingTable);
-
-        for (NodeInfo n : this.neighbors.getNeighborNodes()){
-            if(n.getNodeId()!= excludedNodeId)
+        neighborsLock.lock();
+        try {
+             byte[] data = Table.serialize(this.addressingTable);
+             for (NodeInfo n : this.neighbors.getNeighborNodes()){
+                if(n.getNodeId()!= excludedNodeId)
                 sendPacket(data, 2, 1, this.id, n.getNodeIp() , n.getNodePort());
+             }
+        }
+        catch(Exception e) {
+            e.printStackTrace();
+        }
+        finally{
+            neighborsLock.unlock();
         }
     }
 
@@ -261,7 +291,16 @@ public class Ott implements Runnable {
             case 1: //Receives neighbors information
 
                 byte[] data = packetReceived.getPayload();
-                this.neighbors = (Table) Table.deserialize(data);
+                neighborsLock.lock();
+                try {
+                    this.neighbors = (Table) Table.deserialize(data);
+                }
+                catch(Exception e) {
+                    e.printStackTrace();
+                }
+                finally{
+                    neighborsLock.unlock();
+                }
                 System.out.println("-> Received neighbors information.\n");
 
                 // Inserts its neighbors in the addressing table
