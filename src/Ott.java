@@ -22,6 +22,7 @@ public class Ott implements Runnable {
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
     private boolean isClient;
+    private LinkedBlockingQueue<RTPpacket> framesQueue;
 
 
 
@@ -38,6 +39,7 @@ public class Ott implements Runnable {
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
         this.isClient = isClient;
+        this.framesQueue = new LinkedBlockingQueue<>();
     }
 
 
@@ -88,43 +90,46 @@ public class Ott implements Runnable {
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
 
-            // If it is a client, only run the client thread, which will be the main thread
+            // If it is a client, run thread to consume stream from special socket
             if(this.isClient) {
-                //new Thread(() -> {
-                Client c = new Client(this.socket);
-                //}).start();
-
-                //TODO implementar o resto da logica do cliente (pedir ao servidor, receber ott node...)
-            }
-
-
-            // Normal overlay node, all overlay node code goes here
-            else{
                 new Thread(() -> {
-                    System.out.println("===> LISTENING UDP");
-                    while(this.running)
-                    {
-                        RTPpacket receivePacket = receivePacket();
-                        if(receivePacket!=null)
-                            this.packetsQueue.add(receivePacket);
-                    }
+                Client c = new Client(this.framesQueue); //todo criar estrutura propria
                 }).start();
-
-                // ---> Main thread consuming the RTPpackets
-                System.out.println("===> CONSUMING UDP");
-                while(this.running){
-                    try{
-                        RTPpacket receivePacket = this.packetsQueue.take();
-                        processPacket(receivePacket);
-                    } catch (InterruptedException e){
-                        e.printStackTrace();
-                    }
-                }
-
-
-                socket.close();
-                System.out.println("Node is shutting down.");
             }
+
+            //TODO implementar o resto da logica do cliente (pedir ao servidor, receber ott node...)
+            // requestStream()
+
+
+            new Thread(() -> {
+                System.out.println("===> LISTENING UDP");
+                while(this.running)
+                {
+                    RTPpacket receivePacket = receivePacket();
+
+                    // Se for um pacote de streaming
+                    if(receivePacket.getPacketType()==26)
+                        this.framesQueue.add(receivePacket);
+
+                    else if(receivePacket!=null)
+                        this.packetsQueue.add(receivePacket);
+                }
+            }).start();
+
+            // ---> Main thread consuming the RTPpackets
+            System.out.println("===> CONSUMING UDP");
+            while(this.running){
+                try{
+                    RTPpacket receivePacket = this.packetsQueue.take();
+                    processPacket(receivePacket);
+                } catch (InterruptedException e){
+                    e.printStackTrace();
+                }
+            }
+
+
+            socket.close();
+            System.out.println("Node is shutting down.");
 
 
         } catch (IOException e){
@@ -163,7 +168,7 @@ public class Ott implements Runnable {
 
     // For each neighbor, sends the addressingTable
     public void sendAddressingTable(){
-        byte[] data = StaticMethods.serialize(this.addressingTable);  //todo passar o serialize para fora do table
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
         try {
             neighborsLock.lock();
@@ -266,8 +271,12 @@ public class Ott implements Runnable {
             Integer fromPort = packet.getPort();
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
-            rtpPacket.printPacketHeader();
+
+            if(rtpPacket.getPacketType()!=26){
+                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
+                rtpPacket.printPacketHeader();
+            }
+
         } catch (IOException e){
             e.printStackTrace();
         }

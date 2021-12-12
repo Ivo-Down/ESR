@@ -5,13 +5,14 @@
    colocar o cliente primeiro a correr que o servidor dispara logo!
    ---------------------- */
 
-import java.io.*;
-import java.net.*;
-import java.text.DecimalFormat;
-import java.awt.*;
-import java.awt.event.*;
 import javax.swing.*;
-import javax.swing.Timer;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.text.DecimalFormat;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class Client {
 
@@ -31,12 +32,12 @@ public class Client {
 
 
   //-------------------------------RTP VARIABLES--------------------------
-  DatagramPacket rcvdp; //UDP packet received from the server (to receive)
-  DatagramSocket RTPsocket; //socket to be used to send and receive UDP packet
+  //DatagramPacket rcvdp; //UDP packet received from the server (to receive)
+  //DatagramSocket RTPsocket; //socket to be used to send and receive UDP packet
 
   static int RTP_RCV_PORT = 25001; //port where the client will receive the RTP packets
   Timer cTimer; //timer used to receive data from the UDP socket
-  byte[] cBuf; //buffer used to store data received from the server 
+  //byte[] cBuf; //buffer used to store data received from the server
 
   //---------------------------STATISTICS VARIABLES-----------------------
   //Em desenvolvimento, a ignorar
@@ -48,10 +49,10 @@ public class Client {
   int statCumLost;            //Number of packets lost
   int statExpRtpNb;           //Expected Sequence number of RTP messages within the session
   int statHighSeqNb;          //Highest sequence number received in session
-
+  LinkedBlockingQueue<RTPpacket> framesQueue;
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Client(DatagramSocket socket) {
+  public Client(LinkedBlockingQueue<RTPpacket> framesQueue) {
 
     //------------------------------BUILD GUI-------------------------------
     //Frame
@@ -104,15 +105,16 @@ public class Client {
     cTimer = new Timer(20, new clientTimerListener());
     cTimer.setInitialDelay(0);
     cTimer.setCoalesce(true);
-    cBuf = new byte[15000]; //allocate enough memory for the buffer used to receive data from the server
+    //cBuf = new byte[15000]; //allocate enough memory for the buffer used to receive data from the server
+    this.framesQueue=framesQueue;
 
-    try {
+    /*try {
       // Socket e Video
 	  RTPsocket = socket; //new DatagramSocket(RTP_RCV_PORT); //init RTP socket (o mesmo para o cliente e servidor)
       RTPsocket.setSoTimeout(5000); // setimeout to 5s
     } catch (SocketException e) {
         System.out.println("Cliente: erro no socket: " + e.getMessage());
-    }
+    }*/
   }
 
   //Para fins estatísticos. Ignorar para já
@@ -154,58 +156,55 @@ public class Client {
     public void actionPerformed(ActionEvent e) {
       
       //Construct a DatagramPacket to receive data from the UDP socket
-      rcvdp = new DatagramPacket(cBuf, cBuf.length);
+      //rcvdp = new DatagramPacket(cBuf, cBuf.length);
 
+      //receive the DP from the socket:
+      //RTPsocket.receive(rcvdp);
+
+      double curTime = System.currentTimeMillis();
+      statTotalPlayTime += curTime - statStartTime;
+      statStartTime = curTime;
+
+      //create an RTPpacket object from the DP
+      RTPpacket rtp_packet = new RTPpacket();
       try{
-	    //receive the DP from the socket:
-	    RTPsocket.receive(rcvdp);
-
-        double curTime = System.currentTimeMillis();
-        statTotalPlayTime += curTime - statStartTime;
-        statStartTime = curTime;
-
-	    //create an RTPpacket object from the DP
-        RTPpacket rtp_packet = new RTPpacket(rcvdp.getData());
-        int seqNb = rtp_packet.getSequenceNumber();
-
-	    //print header bitstream:
-	    rtp_packet.printPacketHeader();
-
-        //get the payload bitstream from the RTPpacket object
-	    int payload_length = rtp_packet.getPayloadSize();
-	    byte [] payload = new byte[payload_length];
-	    payload = rtp_packet.getPayload();
-
-        //compute stats and update the label in GUI
-        statExpRtpNb++;
-        if (seqNb > statHighSeqNb) {
-          statHighSeqNb = seqNb;
-        }
-        if (statExpRtpNb != seqNb) {
-          statCumLost++;
-        }
-
-        //Ignorar, estatísticas...
-        statDataRate = statTotalPlayTime == 0 ? 0 : (statTotalBytes / (statTotalPlayTime / 1000.0));
-        statFractionLost = (float)statCumLost / statHighSeqNb;
-        statTotalBytes += payload_length;
-        updateStatsLabel();
-
-
-	  //get an Image object from the payload bitstream
-	  Toolkit toolkit = Toolkit.getDefaultToolkit();
-	  Image image = toolkit.createImage(payload, 0, payload_length);
-	
-	  //display the image as an ImageIcon object
-	  icon = new ImageIcon(image);
-	  iconLabel.setIcon(icon);
+        rtp_packet = framesQueue.take();
+      } catch (InterruptedException ex){
+        ex.printStackTrace();
       }
-      catch (InterruptedIOException iioe){
-	    System.out.println("Nothing to read");
+      int seqNb = rtp_packet.getSequenceNumber();
+
+      //print header bitstream:
+      //rtp_packet.printPacketHeader();
+
+      //get the payload bitstream from the RTPpacket object
+      int payload_length = rtp_packet.getPayloadSize();
+      byte [] payload = new byte[payload_length];
+      payload = rtp_packet.getPayload();
+
+      //compute stats and update the label in GUI
+      statExpRtpNb++;
+      if (seqNb > statHighSeqNb) {
+        statHighSeqNb = seqNb;
       }
-      catch (IOException ioe) {
-	    System.out.println("Exception caught: "+ioe);
+      if (statExpRtpNb != seqNb) {
+        statCumLost++;
       }
+
+      //Ignorar, estatísticas...
+      statDataRate = statTotalPlayTime == 0 ? 0 : (statTotalBytes / (statTotalPlayTime / 1000.0));
+      statFractionLost = (float)statCumLost / statHighSeqNb;
+      statTotalBytes += payload_length;
+      updateStatsLabel();
+
+
+      //get an Image object from the payload bitstream
+      Toolkit toolkit = Toolkit.getDefaultToolkit();
+      Image image = toolkit.createImage(payload, 0, payload_length);
+
+      //display the image as an ImageIcon object
+      icon = new ImageIcon(image);
+      iconLabel.setIcon(icon);
     }
   }
 
