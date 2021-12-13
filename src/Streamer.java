@@ -119,7 +119,6 @@ public class Streamer extends JFrame implements ActionListener {
 
                             DatagramPacket packet = new DatagramPacket(rtp_packet.getPacket(), rtp_packet.getPacketSize(), ip, port);
                             RTPsocket.send(packet);
-                            System.out.println("SENT FRAME " + );
                         }
                     }
                     finally {

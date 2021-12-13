@@ -106,17 +106,17 @@ public class Ott implements Runnable {
             if(!this.isClient) {
                 System.out.println("===> STREAMING");
                 new Thread(() -> {
-                    //Gets the next packet to be streamed
-                    RTPpacket rtp_packet = new RTPpacket();
-                    try{
-                        rtp_packet = framesQueue.take();
-                        System.out.println("oui");
-                    } catch (InterruptedException ex){
-                        ex.printStackTrace();
+                    while(this.running){
+                        //Gets the next packet to be streamed
+                        RTPpacket rtp_packet = new RTPpacket();
+                        try{
+                            rtp_packet = framesQueue.take();
+                        } catch (InterruptedException ex){
+                            ex.printStackTrace();
+                        }
+
+                        streamPacket(rtp_packet);
                     }
-
-                    streamPacket(rtp_packet);
-
                 }).start();
             }
 
