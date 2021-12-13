@@ -10,7 +10,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -29,8 +29,8 @@ public class OttBootStrapper implements Runnable {
     private Lock overlayNodesLock = new ReentrantLock();  //temos pelo menos duas threads a usar a Table 
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
-    private HashSet<Integer> nodesToStreamTo;
-    private Lock nodesToStreamToLock = new ReentrantLock();  //TODO IMPLEMENTAR LOCK
+    private HashMap<Integer, NodeInfo> nodesToStreamTo;
+    private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -41,7 +41,7 @@ public class OttBootStrapper implements Runnable {
         this.port = Constants.DEFAULT_PORT;
         this.overlayNodes = this.getAllNodes();
         this.packetsQueue = new LinkedBlockingQueue<>();
-        this.nodesToStreamTo = new HashSet<>();
+        this.nodesToStreamTo = new HashMap<>();
 
         try{
             this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
@@ -68,8 +68,8 @@ public class OttBootStrapper implements Runnable {
 
                     File f = new File("src/movie.Mjpeg");
                     if (f.exists()) {
-                        // TODO PASSAR LISTA DE NODOS A RECEBER A STREAM PARA O STREAMER -> SO STREAMA SE A LISTA TIVER ELEMS
-                        Streamer s = new Streamer("src/movie.Mjpeg", this.nodesToStreamTo);
+
+                        Streamer s = new Streamer("src/movie.Mjpeg", this.nodesToStreamTo, this.nodesToStreamToLock, this.socket);
                     } else
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
@@ -258,7 +258,7 @@ public class OttBootStrapper implements Runnable {
             RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
-            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
             //newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
@@ -347,7 +347,15 @@ public class OttBootStrapper implements Runnable {
             case 7: //Bootstrapper receives a stream request
 
                 // Ads requesting node to the list of nodes receiving the stream
-                this.nodesToStreamTo.add(packetReceived.getSenderId());
+                int streamRequestId = packetReceived.getSenderId();
+                System.out.println("Received stream request from node " + packetReceived.getSenderId() + ".");
+                try{
+                    this.nodesToStreamToLock.lock();
+                    this.nodesToStreamTo.put(streamRequestId, this.overlayNodes.getNodeInfo(streamRequestId));
+                }
+                finally {
+                    this.nodesToStreamToLock.unlock();
+                }
                 break;
         }
     }

@@ -37,6 +37,10 @@ public class Table implements Serializable {
         neighborNodes.get(nodeId).setNodeState(state);
     }
 
+    public int getSize(){
+        return this.neighborNodes.size();
+    }
+
 
     public Table getNodesWithState(NodeInfo.nodeState state){
         Table res = new Table();

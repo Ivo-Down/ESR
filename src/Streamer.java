@@ -5,13 +5,19 @@
    colocar primeiro o cliente a correr, porque este dispara logo
    ---------------------- */
 
-import java.io.*;
-import java.net.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.util.HashSet;
 import javax.swing.*;
-import javax.swing.Timer;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
 
 
 public class Streamer extends JFrame implements ActionListener {
@@ -22,28 +28,26 @@ public class Streamer extends JFrame implements ActionListener {
 
   
   //-------------------------------RTP VARIABLES--------------------------
-  DatagramPacket senddp; //UDP packet containing the video frames (to send)
-  DatagramSocket RTPsocket; //socket to be used to send and receive UDP packet
-
-  int RTP_dest_port = 25001; //destination port for RTP packets
-  InetAddress ClientIPAddr; //Client IP address
-  
-  static String VideoFileName; //video file to request to the server
+    DatagramSocket RTPsocket; //socket to be used to send and receive UDP packet
+    HashMap<Integer, NodeInfo> nodesToStreamTo;
+    Lock nodesToStreamToLock;
 
 
-  //----------------------------VIDEO CONSTANTS-------------------------------
-  int imagenb = 0; //image nb of the image currently transmitted
-  VideoStream video; //VideoStream object used to access video frames
-  static int MJPEG_TYPE = 26; //RTP payload type for MJPEG video
-  static int FRAME_PERIOD = 40; //Frame period of the video to stream, in ms
-  static int VIDEO_LENGTH = 500; //length of the video in frames
+    static String VideoFileName; //video file to request to the server
 
-  Timer sTimer; //timer used to send the images at the video frame rate
-  byte[] sBuf; //buffer used to store the images to send to the client 
+
+      //----------------------------VIDEO CONSTANTS-------------------------------
+      int imagenb = 0; //image nb of the image currently transmitted
+      VideoStream video; //VideoStream object used to access video frames
+      static int FRAME_PERIOD = 40; //Frame period of the video to stream, in ms
+      static int VIDEO_LENGTH = 500; //length of the video in frames
+
+      Timer sTimer; //timer used to send the images at the video frame rate
+      byte[] sBuf; //buffer used to store the images to send to the client
 
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Streamer(String Video, HashSet<Integer> nodesToStreamTo) {
+  public Streamer(String Video, HashMap<Integer, NodeInfo> nodesToStreamTo, Lock nodesToStreamToLock, DatagramSocket RTPsocket) {
 
       //init Frame
       super("Streamer");
@@ -55,13 +59,12 @@ public class Streamer extends JFrame implements ActionListener {
       sTimer.setInitialDelay(0);
       sTimer.setCoalesce(true);
       sBuf = new byte[15000]; //allocate memory for the sending buffer
+      this.nodesToStreamTo = nodesToStreamTo;
+      this.nodesToStreamToLock = nodesToStreamToLock;
+      this.RTPsocket = RTPsocket;
 
       try {
 
-	    RTPsocket = new DatagramSocket(); //init RTP socket
-        ClientIPAddr = InetAddress.getByName(ipToStream);
-           RTP_dest_port = portToStream;
-        System.out.println("Servidor: socket " + ClientIPAddr);
 
 	    video = new VideoStream(VideoFileName); //init the VideoStream object:
         System.out.println("Servidor: vai enviar video do file " + VideoFileName);
@@ -104,21 +107,26 @@ public class Streamer extends JFrame implements ActionListener {
                     //get next frame to send from the video, as well as its size
                     int image_length = video.getnextframe(sBuf);
 
-                    //Builds an RTPpacket object containing the frame
-                    RTPpacket rtp_packet = new RTPpacket(sBuf, MJPEG_TYPE, imagenb, 1, image_length);
 
-                    //get to total length of the full rtp packet to send
-                    int packet_length = rtp_packet.getPacketSize();
+                    //For each node sends stream frame
+                    try{
+                        this.nodesToStreamToLock.lock();  //todo not sure if this works
+                        for(Map.Entry<Integer, NodeInfo> nodeToStream : this.nodesToStreamTo.entrySet()){
 
-                    //retrieve the packet bitstream and store it in an array of bytes
-                    byte[] packet_bits = new byte[packet_length];
-                    packet_bits = rtp_packet.getPacket();
+                            RTPpacket rtp_packet = new RTPpacket(sBuf, 26, imagenb, Constants.SERVER_ID, image_length);
+                            InetAddress ip = nodeToStream.getValue().getNodeIp();
+                            int port = nodeToStream.getValue().getNodePort();
 
-                    //send the packet as a DatagramPacket over the UDP socket
+                            DatagramPacket packet = new DatagramPacket(rtp_packet.getPacket(), rtp_packet.getPacketSize(), ip, port);
+                            RTPsocket.send(packet);
+                            System.out.println("SENT FRAME " + );
+                        }
+                    }
+                    finally {
+                        this.nodesToStreamToLock.unlock();
+                    }
 
-                    //TODO For each node to stream
-                    senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
-                    RTPsocket.send(senddp);
+
 
                    // System.out.println("Send frame #" + imagenb);
                     //print the header bitstream

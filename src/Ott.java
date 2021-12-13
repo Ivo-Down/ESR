@@ -110,6 +110,7 @@ public class Ott implements Runnable {
                     RTPpacket rtp_packet = new RTPpacket();
                     try{
                         rtp_packet = framesQueue.take();
+                        System.out.println("oui");
                     } catch (InterruptedException ex){
                         ex.printStackTrace();
                     }
@@ -194,23 +195,29 @@ public class Ott implements Runnable {
 
         try {
             neighborsLock.lock();
+            int packetType = 2;
+            // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta
+            if(this.neighbors.getSize()==1)
+                packetType = 22;
+
             for (NodeInfo n : this.neighbors.getNeighborNodes())
-                sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
+                if(n.getNodeId()!=Constants.SERVER_ID)
+                    sendPacket(data, packetType, 1, this.id, n.getNodeIp(), n.getNodePort());
         }
         finally{
                 neighborsLock.unlock();
         }
     }
 
-    // For each neighbor except one, sends the addressingTable
-    public void sendAddressingTable(Integer excludedNodeId){
+    // Sends the addressingTable to that neighbor
+    public void sendAddressingTable(Integer specificNodeId){
         System.out.println("Sending updated table to neighbors.");
         byte[] data = StaticMethods.serialize(this.addressingTable);
 
         try {
             neighborsLock.lock();
             for (NodeInfo n : this.neighbors.getNeighborNodes()){
-                if(n.getNodeId()!= excludedNodeId){
+                if(n.getNodeId()== specificNodeId){
                     sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
                 }
             }
@@ -370,6 +377,14 @@ public class Ott implements Runnable {
                     sendAddressingTable();
                     System.out.println(this.addressingTable.toString());
                 }
+                break;
+
+
+
+            case 22: // Isolated neighbor wants to be updated
+                sendAddressingTable(packetReceived.getSenderId());
+                System.out.println(this.addressingTable.toString());
+
                 break;
 
 
