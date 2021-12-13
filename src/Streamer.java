@@ -9,6 +9,7 @@ import java.io.*;
 import java.net.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.HashSet;
 import javax.swing.*;
 import javax.swing.Timer;
 
@@ -42,7 +43,7 @@ public class Streamer extends JFrame implements ActionListener {
 
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Streamer(String Video, String ipToStream, Integer portToStream) {
+  public Streamer(String Video, HashSet<Integer> nodesToStreamTo) {
 
       //init Frame
       super("Streamer");
@@ -99,7 +100,6 @@ public class Streamer extends JFrame implements ActionListener {
 
                 //update current imagenb
                 imagenb++;
-
                 try {
                     //get next frame to send from the video, as well as its size
                     int image_length = video.getnextframe(sBuf);
@@ -115,6 +115,8 @@ public class Streamer extends JFrame implements ActionListener {
                     packet_bits = rtp_packet.getPacket();
 
                     //send the packet as a DatagramPacket over the UDP socket
+
+                    //TODO For each node to stream
                     senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
                     RTPsocket.send(senddp);
 

@@ -10,6 +10,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -28,8 +29,8 @@ public class OttBootStrapper implements Runnable {
     private Lock overlayNodesLock = new ReentrantLock();  //temos pelo menos duas threads a usar a Table 
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
-
-
+    private HashSet<Integer> nodesToStreamTo;
+    private Lock nodesToStreamToLock = new ReentrantLock();  //TODO IMPLEMENTAR LOCK
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -40,7 +41,7 @@ public class OttBootStrapper implements Runnable {
         this.port = Constants.DEFAULT_PORT;
         this.overlayNodes = this.getAllNodes();
         this.packetsQueue = new LinkedBlockingQueue<>();
-
+        this.nodesToStreamTo = new HashSet<>();
 
         try{
             this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
@@ -50,11 +51,6 @@ public class OttBootStrapper implements Runnable {
             e.printStackTrace();
         }
     }
-
-
-
-
-
 
 
     // ------------------------------ OTHER METHODS ------------------------------
@@ -68,12 +64,12 @@ public class OttBootStrapper implements Runnable {
 
 
             new Thread(() -> {
-                System.out.println("===> SHARING VIDEO");
+                System.out.println("===> STREAMING VIDEO");
 
                     File f = new File("src/movie.Mjpeg");
                     if (f.exists()) {
-                        // TODO MUDAR -> SO STREAMA PARA O CLIENT 11
-                        Streamer s = new Streamer("src/movie.Mjpeg","127.0.0.1", 8097);
+                        // TODO PASSAR LISTA DE NODOS A RECEBER A STREAM PARA O STREAMER -> SO STREAMA SE A LISTA TIVER ELEMS
+                        Streamer s = new Streamer("src/movie.Mjpeg", this.nodesToStreamTo);
                     } else
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
@@ -328,11 +324,9 @@ public class OttBootStrapper implements Runnable {
                     this.overlayNodesLock.unlock();
                 }
 
-
                 // Sending the answer
                 sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
-
 
 
 
@@ -346,6 +340,14 @@ public class OttBootStrapper implements Runnable {
                     this.overlayNodesLock.unlock();
                 }
 
+                break;
+
+
+
+            case 7: //Bootstrapper receives a stream request
+
+                // Ads requesting node to the list of nodes receiving the stream
+                this.nodesToStreamTo.add(packetReceived.getSenderId());
                 break;
         }
     }

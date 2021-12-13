@@ -3,6 +3,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.Lock;
@@ -14,18 +15,16 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
-
     private Table neighbors;
     private Lock neighborsLock = new ReentrantLock();
-
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
     private boolean isClient;
     private LinkedBlockingQueue<RTPpacket> framesQueue;
-
-
-
+    private boolean streaming;
+    private HashSet<Integer> nodesToStreamTo;
+    private Lock nodesToStreamToLock = new ReentrantLock();  //TODO IMPLEMENTAR LOCK
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -40,6 +39,8 @@ public class Ott implements Runnable {
         this.addressingTable = new AddressingTable(this.id);
         this.isClient = isClient;
         this.framesQueue = new LinkedBlockingQueue<>();
+        this.streaming = false;
+        this.nodesToStreamTo = new HashSet<>();
     }
 
 
@@ -92,27 +93,48 @@ public class Ott implements Runnable {
 
             // If it is a client, run thread to consume stream from special socket
             if(this.isClient) {
+                System.out.println("===> WATCHING STREAM");
                 new Thread(() -> {
-                Client c = new Client(this.framesQueue); //todo criar estrutura propria
+                    Client c = new Client(this.framesQueue);
+                    // Requesting stream to the nearest streaming node
+                    requestStream();
+
                 }).start();
             }
 
-            //TODO implementar o resto da logica do cliente (pedir ao servidor, receber ott node...)
-            // requestStream()
+            // Thread to stream, consumes from framesQueue and sends to all its receivingStreamNodes
+            if(!this.isClient) {
+                System.out.println("===> STREAMING");
+                new Thread(() -> {
+                    //Gets the next packet to be streamed
+                    RTPpacket rtp_packet = new RTPpacket();
+                    try{
+                        rtp_packet = framesQueue.take();
+                    } catch (InterruptedException ex){
+                        ex.printStackTrace();
+                    }
 
+                    streamPacket(rtp_packet);
+
+                }).start();
+            }
 
             new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
                 while(this.running)
                 {
                     RTPpacket receivePacket = receivePacket();
+                    if(receivePacket!=null){
 
-                    // Se for um pacote de streaming
-                    if(receivePacket.getPacketType()==26)
-                        this.framesQueue.add(receivePacket);
+                        // Se for um pacote de streaming, nem vai processar
+                        if(receivePacket.getPacketType()==26) {
+                            this.streaming=true;  // it is streaming TODO POR ISTO DUMA MANEIRA MAIS ELEGANTE, VAI TAR SMP A DAR SET À  VAR
+                            this.framesQueue.add(receivePacket);
+                        }
 
-                    else if(receivePacket!=null)
-                        this.packetsQueue.add(receivePacket);
+                        else
+                            this.packetsQueue.add(receivePacket);
+                    }
                 }
             }).start();
 
@@ -234,15 +256,37 @@ public class Ott implements Runnable {
 
 
 
+    public void requestStream(){
+        int nodeToRequestStream = this.addressingTable.getNextNode(Constants.SERVER_ID); //node closest to the bootstrapper
+        InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
+        int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
+
+        sendPacket(new byte[0], 7, 1, this.id, closerNodeIp, closerNodePort);
+    }
+
+    public void streamPacket(RTPpacket rtPpacket){
+        for(Integer nodeId: this.nodesToStreamTo){
+            InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
+            int requestFromPort = this.neighbors.getNodePort(nodeId);
+            sendPacket(rtPpacket, requestFromIp, requestFromPort);
+        }
+    }
 
 
 
 
 
+    public void sendPacket(RTPpacket rtPpacket, InetAddress IP, int port){
+        try{
+            DatagramPacket packet = new DatagramPacket(rtPpacket.getPacket(), rtPpacket.getPacketSize(), IP, port);
 
-
-
-
+            this.socket.send(packet);
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            rtPpacket.printPacketHeader();
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
 
 
     public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
@@ -287,8 +331,6 @@ public class Ott implements Runnable {
     public void processPacket(RTPpacket packetReceived){
 
         switch (packetReceived.getPacketType()) {
-
-
 
             case 1: //Receives neighbors information
 
@@ -336,6 +378,18 @@ public class Ott implements Runnable {
                 // Sends a Im alive signal
                 System.out.println("-> Received isAlive check. Replying.\n");
                 sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+
+
+
+            case 7: //Node receives a stream request
+
+                // Ads requesting node to the list of nodes receiving the stream
+                this.nodesToStreamTo.add(packetReceived.getSenderId());
+
+                if(!this.streaming){
+                    requestStream();
+                }
                 break;
         }
     }

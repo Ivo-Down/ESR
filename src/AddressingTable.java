@@ -16,6 +16,9 @@ public class AddressingTable implements Serializable {
         public int getCost(){
             return this.cost;
         }
+        public int getNextNode(){
+            return this.nextNode;
+        }
 
         @Override
         public String toString() {
@@ -48,6 +51,10 @@ public class AddressingTable implements Serializable {
 
     public int getDistance(Integer destinyNode){
         return this.distanceVector.get(destinyNode).getCost();
+    }
+
+    public int getNextNode(Integer destinyNode){
+        return this.distanceVector.get(destinyNode).getNextNode();
     }
 
     public HashMap<Integer, MapValue> getDistanceVector() {
