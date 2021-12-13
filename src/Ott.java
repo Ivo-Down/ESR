@@ -196,7 +196,7 @@ public class Ott implements Runnable {
         try {
             neighborsLock.lock();
             int packetType = 2;
-            // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta
+            // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta, o tipo 22 exige resposta
             if(this.neighbors.getSize()==1)
                 packetType = 22;
 
@@ -373,7 +373,6 @@ public class Ott implements Runnable {
 
                 // If the addressing table changed, notify the neighbors
                 if(updated){
-                    //sendAddressingTable(packetReceived.getSenderId());   nota: assim resolve o problema de o último nó a entrar n ficar atualizado
                     sendAddressingTable();
                     System.out.println(this.addressingTable.toString());
                 }
@@ -381,7 +380,7 @@ public class Ott implements Runnable {
 
 
 
-            case 22: // Isolated neighbor wants to be updated
+            case 22: // Isolated neighbor wants to be updated, mandatory request to ask for
                 sendAddressingTable(packetReceived.getSenderId());
                 System.out.println(this.addressingTable.toString());
 

@@ -112,6 +112,7 @@ public class OttBootStrapper implements Runnable {
                                 if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
                                     this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
                                     System.out.println("Node " + e.getKey() + " timed out.");
+                                    //TODO AVISAR TODOS OS VIZINHOS
                                 }
                                 if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED))
                                     this.overlayNodes.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
@@ -319,6 +320,7 @@ public class OttBootStrapper implements Runnable {
                 try{
                     this.overlayNodesLock.lock();
                     this.overlayNodes.setNodeState(nodeId, NodeInfo.nodeState.ON);
+                    //TODO ENVIAR MSG A AVISAR OS NODOS
                 }
                 finally {
                     this.overlayNodesLock.unlock();
