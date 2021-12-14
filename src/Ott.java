@@ -5,7 +5,10 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -20,11 +23,12 @@ public class Ott implements Runnable {
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
+    private AddressingTable originalAddressingTable;
     private boolean isClient;
     private LinkedBlockingQueue<RTPpacket> framesQueue;
     private boolean streaming;
     private HashSet<Integer> nodesToStreamTo;
-    private Lock nodesToStreamToLock = new ReentrantLock();  //TODO IMPLEMENTAR LOCK
+    private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -37,6 +41,7 @@ public class Ott implements Runnable {
         this.neighbors = new Table();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
+        this.originalAddressingTable = new AddressingTable(this.id);
         this.isClient = isClient;
         this.framesQueue = new LinkedBlockingQueue<>();
         this.streaming = false;
@@ -122,6 +127,66 @@ public class Ott implements Runnable {
             }
 
             new Thread(() -> {
+                // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
+                System.out.println("===> CHECKING IF NODES ARE ALIVE");
+
+                // De x em x segundos vai verificar se os servidores ainda estão vivos
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.scheduleAtFixedRate(() -> {
+
+                    try {
+                        for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
+                            // Get nodes that are flagged with 'ON'
+
+                            Table onlineNodes;
+                            try{
+                                this.neighborsLock.lock();
+                                onlineNodes = this.neighbors;
+                            }
+                            finally {
+                                this.neighborsLock.unlock();
+                            }
+
+
+                            // For each online node, check if it is alive and change its state to UNKNOWN
+                            for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
+                                if(e.getKey()!=Constants.SERVER_ID)
+                                    sendIsAliveCheck(e.getKey(), e.getValue());
+
+                            // Waits for the nodes to respond
+                            Thread.sleep(Constants.TIMEOUT_TIME);
+                        }
+
+                        // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
+                        try{
+                            this.neighborsLock.lock();
+                            for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                                    System.out.println("Node " + e.getKey() + " timed out.");
+                                    //TODO 1- verificar se o nodo era o nextNode para o servidor
+                                    // caso seja, temos de fazer toda a logica de drop da addressing table e pedi-la aos vizinhos
+
+                                }
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED))
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
+                            }
+                        }
+                        finally {
+                            this.neighborsLock.unlock();
+                        }
+                        this.neighbors.printTable();
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
+
+            }).start();
+
+
+            new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
                 while(this.running)
                 {
@@ -187,6 +252,7 @@ public class Ott implements Runnable {
     public void insertNeighborsInAddressingTable(){
         for (NodeInfo n : this.neighbors.getNeighborNodes())
             this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
+        this.originalAddressingTable = this.addressingTable.copy();
     }
 
 
@@ -273,15 +339,34 @@ public class Ott implements Runnable {
     }
 
     public void streamPacket(RTPpacket rtPpacket){
-        for(Integer nodeId: this.nodesToStreamTo){
-            InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
-            int requestFromPort = this.neighbors.getNodePort(nodeId);
-            sendPacket(rtPpacket, requestFromIp, requestFromPort);
+        try {
+            nodesToStreamToLock.lock();
+            for(Integer nodeId: this.nodesToStreamTo){
+                InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
+                int requestFromPort = this.neighbors.getNodePort(nodeId);
+                sendPacket(rtPpacket, requestFromIp, requestFromPort);
+            }
+        }
+        finally{
+            nodesToStreamToLock.unlock();
         }
     }
 
+    public void dropCurrentAddressingTable(){
+        this.addressingTable = this.originalAddressingTable.copy();
+    }
 
-
+    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+        System.out.println("Checking if node "+ id+" is alive.");
+        sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+        try{
+            this.neighborsLock.lock();
+            this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
+        }
+        finally {
+            this.neighborsLock.unlock();
+        }
+    }
 
 
     public void sendPacket(RTPpacket rtPpacket, InetAddress IP, int port){
@@ -397,10 +482,31 @@ public class Ott implements Runnable {
 
 
 
+            case 6: //IsAlive confirmation
+                System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
+                try{
+                    this.neighborsLock.lock();
+                    this.neighbors.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
+                }
+                finally {
+                    this.neighborsLock.unlock();
+                }
+
+                break;
+
+
+
             case 7: //Node receives a stream request
 
                 // Ads requesting node to the list of nodes receiving the stream
-                this.nodesToStreamTo.add(packetReceived.getSenderId());
+                try {
+                    nodesToStreamToLock.lock();
+                    this.nodesToStreamTo.add(packetReceived.getSenderId());
+                }
+                finally{
+                    nodesToStreamToLock.unlock();
+                }
+
 
                 if(!this.streaming){
                     requestStream();

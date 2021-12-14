@@ -27,12 +27,20 @@ public class AddressingTable implements Serializable {
                     ", cost=" + cost +
                     '}';
         }
+
+        public MapValue copy (MapValue mapValue){
+            return new MapValue(mapValue.nextNode, mapValue.getCost());
+        }
     }
 
 
     private HashMap<Integer, MapValue> distanceVector;  // key: destinyNodeId   value: pair of nextNodeId and cost
 
 
+
+    public AddressingTable( ){
+        this.distanceVector = new HashMap<>();
+    }
 
     public AddressingTable(Integer nodeId){
         this.distanceVector = new HashMap<>();
@@ -61,6 +69,13 @@ public class AddressingTable implements Serializable {
         return distanceVector;
     }
 
+    public HashMap<Integer, MapValue> getDistanceVectorCopy() {
+        return (HashMap<Integer, MapValue>) distanceVector.clone();
+    }
+
+    public void setDistanceVector(HashMap<Integer, MapValue> d) {
+        this.distanceVector = d;
+    }
 
 
     // ------------------------------ OTHER METHODS ------------------------------
@@ -75,6 +90,12 @@ public class AddressingTable implements Serializable {
         for (Map.Entry<Integer, MapValue> e : this.distanceVector.entrySet()){
             res += "destinyNodeId: " + e.getKey() +"\t"+ e.getValue().toString() + "\n";
         }
+        return res;
+    }
+
+    public AddressingTable copy (){
+        AddressingTable res = new AddressingTable();
+        res.setDistanceVector(this.getDistanceVectorCopy());
         return res;
     }
 }
