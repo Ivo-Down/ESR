@@ -111,6 +111,7 @@ public class Ott implements Runnable {
                         RTPpacket rtp_packet = new RTPpacket();
                         try{
                             rtp_packet = framesQueue.take();
+                            rtp_packet.setSenderId(this.id);
                         } catch (InterruptedException ex){
                             ex.printStackTrace();
                         }
