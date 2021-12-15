@@ -3,6 +3,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -23,7 +24,6 @@ public class Ott implements Runnable {
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
-    private AddressingTable originalAddressingTable;
     private boolean isClient;
     private LinkedBlockingQueue<RTPpacket> framesQueue;
     private boolean streaming;
@@ -41,7 +41,6 @@ public class Ott implements Runnable {
         this.neighbors = new Table();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.addressingTable = new AddressingTable(this.id);
-        this.originalAddressingTable = new AddressingTable(this.id);
         this.isClient = isClient;
         this.framesQueue = new LinkedBlockingQueue<>();
         this.streaming = false;
@@ -127,7 +126,7 @@ public class Ott implements Runnable {
             }
 
             new Thread(() -> {
-                // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
+                // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
                 System.out.println("===> CHECKING IF NODES ARE ALIVE");
 
                 // De x em x segundos vai verificar se os servidores ainda estão vivos
@@ -251,8 +250,7 @@ public class Ott implements Runnable {
 
     public void insertNeighborsInAddressingTable(){
         for (NodeInfo n : this.neighbors.getNeighborNodes())
-            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1);
-        this.originalAddressingTable = this.addressingTable.copy();
+            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true); //todo assumimos que começam a on?
     }
 
 
@@ -300,24 +298,25 @@ public class Ott implements Runnable {
     public boolean updateAddressingTable(AddressingTable at, Integer neighborId){
         boolean updated = false;
 
-        for (Map.Entry<Integer, AddressingTable.MapValue> m : at.getDistanceVector().entrySet()){
+        for (Map.Entry<Integer, ArrayList<AddressingTable.Value>> m : at.getDistanceVector().entrySet()){
+            //TODO FAZER ALTERAÇOES NECESSÁRIAS NESTA PARTE PARA A NOVA ADDR_TABLE
 
             // Se o nodo já existe na tabela de endereçamento vai comparar as distâncias
-            if(this.addressingTable.containsNode(m.getKey())){
+            if(this.addressingTable.containsDestinyNode(m.getKey())){
                 //  Se a distancia for menor, atualizar a tabela
 
-                int actualDistance = this.addressingTable.getDistance(m.getKey());
-                int neighborDistance = at.getDistance(m.getKey());
+                int actualDistance = this.addressingTable.getBestCost(m.getKey());
+                int neighborDistance = at.getBestCost(m.getKey());
 
                 if(neighborDistance + 1 < actualDistance){
                     // Atualizar a tabela
-                    this.addressingTable.setDistance(m.getKey(), neighborId, neighborDistance+1);
+                    this.addressingTable.setDistance(m.getKey(), neighborId, neighborDistance+1, true);
                     updated = true;
                 }
             }
 
             else{
-                this.addressingTable.setDistance(m.getKey(), neighborId, at.getDistance(m.getKey())+1);
+                this.addressingTable.setDistance(m.getKey(), neighborId, at.getBestCost(m.getKey())+1, true);
                 updated = true;
             }
         }
@@ -331,7 +330,7 @@ public class Ott implements Runnable {
 
 
     public void requestStream(){
-        int nodeToRequestStream = this.addressingTable.getNextNode(Constants.SERVER_ID); //node closest to the bootstrapper
+        int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); //node closest to the bootstrapper
         InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
         int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
 
@@ -352,9 +351,6 @@ public class Ott implements Runnable {
         }
     }
 
-    public void dropCurrentAddressingTable(){
-        this.addressingTable = this.originalAddressingTable.copy();
-    }
 
     public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
