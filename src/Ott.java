@@ -296,7 +296,6 @@ public class Ott implements Runnable {
         boolean updated = false;
 
         for (Map.Entry<Integer, ArrayList<AddressingTable.Value>> m : at.getDistanceVector().entrySet()){
-            //TODO FAZER ALTERAÇOES NECESSÁRIAS NESTA PARTE PARA A NOVA ADDR_TABLE
 
             // Se o nodo já existe na tabela de endereçamento vai comparar as distâncias
             if(this.addressingTable.containsDestinyNode(m.getKey())){
@@ -331,19 +330,28 @@ public class Ott implements Runnable {
 
     public void requestStream(){
         int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); //node closest to the bootstrapper
-        InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
-        int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
 
-        sendPacket(new byte[0], 7, 1, this.id, closerNodeIp, closerNodePort);
+        if(nodeToRequestStream<0)
+            System.out.println("Impossible to request stream, there is no possible path available.");
+
+        else{
+            InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
+            int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
+
+            sendPacket(new byte[0], 7, 1, this.id, closerNodeIp, closerNodePort);
+        }
+
     }
 
     public void streamPacket(RTPpacket rtPpacket){
         try {
             nodesToStreamToLock.lock();
             for(Integer nodeId: this.nodesToStreamTo){
-                InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
-                int requestFromPort = this.neighbors.getNodePort(nodeId);
-                sendPacket(rtPpacket, requestFromIp, requestFromPort);
+                if(this.neighbors.getNodeState(nodeId) == NodeInfo.nodeState.ON){ //only streams to alive nodes todo a dar erro aqui
+                    InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
+                    int requestFromPort = this.neighbors.getNodePort(nodeId);
+                    sendPacket(rtPpacket, requestFromIp, requestFromPort);
+                }
             }
         }
         finally{
@@ -418,6 +426,8 @@ public class Ott implements Runnable {
 
 
     public void processPacket(RTPpacket packetReceived){
+
+        //todo adicionar nodo que enviou a msg aos nodes vivos
 
         switch (packetReceived.getPacketType()) {
 
@@ -503,7 +513,7 @@ public class Ott implements Runnable {
                     nodesToStreamToLock.unlock();
                 }
 
-
+                // If isn't receiving the stream, goes and asks for it
                 if(!this.streaming){
                     requestStream();
                 }

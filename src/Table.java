@@ -32,6 +32,10 @@ public class Table implements Serializable {
         return neighborNodes.get(nodeId).getNodePort();
     }
 
+    public NodeInfo.nodeState getNodeState(int nodeId){
+        return neighborNodes.get(nodeId).getNodeState();
+    }
+
 
     public void setNodeState(int nodeId, NodeInfo.nodeState state){
         neighborNodes.get(nodeId).setNodeState(state);

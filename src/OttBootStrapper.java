@@ -3,6 +3,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -57,7 +58,7 @@ public class OttBootStrapper implements Runnable {
             System.out.println("Bootstrapper is running!");
 
 
-/*
+
             new Thread(() -> {
                 System.out.println("===> STREAMING VIDEO");
 
@@ -69,7 +70,7 @@ public class OttBootStrapper implements Runnable {
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
 
-
+/*
             new Thread(() -> {
                 // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
                 System.out.println("===> CHECKING IF NODES ARE ALIVE");

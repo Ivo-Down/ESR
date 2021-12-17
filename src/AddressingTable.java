@@ -102,6 +102,7 @@ public class AddressingTable implements Serializable {
         return getBestValue(destinyNode).getNextNode();
     }
 
+    // Returns the best value which is available
     public Value getBestValue(Integer destinyNode){
         Value res = new Value();
         int min = Integer.MAX_VALUE;
