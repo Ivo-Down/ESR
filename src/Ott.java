@@ -6,10 +6,7 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -124,7 +121,7 @@ public class Ott implements Runnable {
                     }
                 }).start();
             }
-
+/*
             new Thread(() -> {
                 // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
                 System.out.println("===> CHECKING IF NODES ARE ALIVE");
@@ -183,7 +180,7 @@ public class Ott implements Runnable {
                 }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
 
             }).start();
-
+*/
 
             new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
@@ -305,7 +302,7 @@ public class Ott implements Runnable {
             if(this.addressingTable.containsDestinyNode(m.getKey())){
                 //  Se a distancia for menor, atualizar a tabela
 
-                int actualDistance = this.addressingTable.getBestCost(m.getKey());
+                int actualDistance = this.addressingTable.getSpecificCost(m.getKey(), neighborId);
                 int neighborDistance = at.getBestCost(m.getKey());
 
                 if(neighborDistance + 1 < actualDistance){

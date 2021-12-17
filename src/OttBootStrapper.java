@@ -3,7 +3,6 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -11,11 +10,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -62,7 +57,7 @@ public class OttBootStrapper implements Runnable {
             System.out.println("Bootstrapper is running!");
 
 
-
+/*
             new Thread(() -> {
                 System.out.println("===> STREAMING VIDEO");
 
@@ -129,7 +124,7 @@ public class OttBootStrapper implements Runnable {
                 }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
 
             }).start();
-
+*/
 
 
             new Thread(() -> {

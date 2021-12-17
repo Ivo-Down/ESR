@@ -113,6 +113,17 @@ public class AddressingTable implements Serializable {
         return res;
     }
 
+
+    public int getSpecificCost(Integer destinyNode, Integer nextNode){
+        for(Value v: this.distanceVector.get(destinyNode)){
+            if(v.getNextNode() == nextNode)
+                return v.getCost();
+        }
+        return -999;
+
+    }
+
+
     public HashMap<Integer, ArrayList<Value>> getDistanceVector() {
         return distanceVector;
     }
