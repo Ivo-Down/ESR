@@ -300,12 +300,14 @@ public class Ott implements Runnable {
 
             // Se o nodo já existe na tabela de endereçamento vai comparar as distâncias
             if(this.addressingTable.containsDestinyNode(m.getKey())){
-                //  Se a distancia for menor, atualizar a tabela
 
                 int actualDistance = this.addressingTable.getSpecificCost(m.getKey(), neighborId);
                 int neighborDistance = at.getBestCost(m.getKey());
 
-                if(neighborDistance + 1 < actualDistance){
+                // Adiciona uma nova entrada se ainda não tem nenhuma para aquele vizinho
+                // ou se a distancia do vizinho + 1 é menor
+
+                if(actualDistance<0 || neighborDistance + 1 < actualDistance){
                     // Atualizar a tabela
                     this.addressingTable.setDistance(m.getKey(), neighborId, neighborDistance+1, true);
                     updated = true;
@@ -313,6 +315,7 @@ public class Ott implements Runnable {
             }
 
             else{
+                // Atualizar a tabela
                 this.addressingTable.setDistance(m.getKey(), neighborId, at.getBestCost(m.getKey())+1, true);
                 updated = true;
             }

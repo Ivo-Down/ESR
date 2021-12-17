@@ -119,7 +119,7 @@ public class AddressingTable implements Serializable {
             if(v.getNextNode() == nextNode)
                 return v.getCost();
         }
-        return -999;
+        return -1;
 
     }
 
