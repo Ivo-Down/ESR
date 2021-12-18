@@ -10,8 +10,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class Ott implements Runnable {
 
@@ -19,17 +17,15 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
+    private Integer streamerId;
     private Table neighbors;
-    private Lock neighborsLock = new ReentrantLock();
     private DatagramSocket socket;
     private LinkedBlockingQueue<RTPpacket> packetsQueue;
     private AddressingTable addressingTable;
-    private Lock addressingTableLock = new ReentrantLock();
     private boolean isClient;
     private LinkedBlockingQueue<RTPpacket> framesQueue;
     private boolean streaming;
     private HashSet<Integer> nodesToStreamTo;
-    private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
 
 
@@ -142,14 +138,9 @@ public class Ott implements Runnable {
                                 // Get nodes that are flagged with 'ON'
 
                                 Table onlineNodes;
-                                try{
-                                    this.neighborsLock.lock();
+                                synchronized (this.neighbors){
                                     onlineNodes = this.neighbors.getNodesWithState(NodeInfo.nodeState.ON);
                                 }
-                                finally {
-                                    this.neighborsLock.unlock();
-                                }
-
 
                                 // For each online node, check if it is alive and change its state to UNKNOWN
                                 for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
@@ -163,8 +154,7 @@ public class Ott implements Runnable {
                             HashSet<Integer> nodesThatDied = new HashSet<>();
 
                             // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
-                            try{
-                                this.neighborsLock.lock();
+                            synchronized (this.neighbors){
                                 for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
                                     if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
 
@@ -178,28 +168,21 @@ public class Ott implements Runnable {
                                         System.out.println("Node " + e.getKey() + " is alive.");
                                     }
                                 }
-                            }
-                            finally {
-                                this.neighborsLock.unlock();
+
+                                this.neighbors.printTable();
                             }
 
-                            try{
-                                this.addressingTableLock.lock();
+                            synchronized (this.addressingTable){
                                 for (Integer nodeId: nodesThatDied){
                                     // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
-                                    if( nodeId == this.addressingTable.getBestNextNode(Constants.SERVER_ID)){
+                                    if(nodeId.equals(this.streamerId)){
                                         this.addressingTable.setNeighborState(nodeId, false);
                                         requestStream();
                                     }
                                     this.addressingTable.setNeighborState(nodeId, false);
                                 }
                             }
-                            finally {
-                                this.addressingTableLock.unlock();
-                            }
 
-
-                            this.neighbors.printTable();
 
                         } catch (Exception e) {
                             e.printStackTrace();
@@ -220,7 +203,8 @@ public class Ott implements Runnable {
 
                         // Se for um pacote de streaming, nem vai processar
                         if(receivePacket.getPacketType()==26) {
-                            this.streaming=true;  // it is streaming TODO POR ISTO DUMA MANEIRA MAIS ELEGANTE, VAI TAR SMP A DAR SET À  VAR
+                            this.streaming=true;
+                            this.streamerId=receivePacket.getSenderId();
                             this.framesQueue.add(receivePacket);
                         }
 
@@ -274,74 +258,42 @@ public class Ott implements Runnable {
     }
 
 
-    public void insertNeighborsInAddressingTable(){
-        try{
-            this.addressingTableLock.lock();
-            for (NodeInfo n : this.neighbors.getNeighborNodes())
-                this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true); //todo assumimos que começam a on?
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+    public synchronized void insertNeighborsInAddressingTable(){
+        for (NodeInfo n : this.neighbors.getNeighborNodes())
+            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true); //todo assumimos que começam a on?
     }
 
 
     // For each neighbor, sends the addressingTable
-    public void sendAddressingTable(){
-        byte[] data;
-        try{
-            this.addressingTableLock.lock();
-            data = StaticMethods.serialize(this.addressingTable);
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+    public synchronized void sendAddressingTable(){
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
-        try {
-            neighborsLock.lock();
-            int packetType = 2;
-            // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta, o tipo 22 exige resposta
-            if(this.neighbors.getSize()==1)
-                packetType = 22;
+        int packetType = 2;
+        // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta, o tipo 22 exige resposta
+        if(this.neighbors.getSize()==1)
+            packetType = 22;
 
-            for (NodeInfo n : this.neighbors.getNeighborNodes())
-                if(n.getNodeId()!=Constants.SERVER_ID)
-                    sendPacket(data, packetType, 1, this.id, n.getNodeIp(), n.getNodePort());
-        }
-        finally{
-                neighborsLock.unlock();
-        }
+        for (NodeInfo n : this.neighbors.getNeighborNodes())
+            if(n.getNodeId()!=Constants.SERVER_ID)
+                sendPacket(data, packetType, 1, this.id, n.getNodeIp(), n.getNodePort());
     }
 
     // Sends the addressingTable to that neighbor
-    public void sendAddressingTable(Integer specificNodeId){
+    public synchronized void sendAddressingTable(Integer specificNodeId){
         System.out.println("Sending updated table to neighbors.");
-        byte[] data;
-        try{
-            this.addressingTableLock.lock();
-            data = StaticMethods.serialize(this.addressingTable);
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
-        try {
-            neighborsLock.lock();
-            for (NodeInfo n : this.neighbors.getNeighborNodes()){
-                if(n.getNodeId()== specificNodeId){
-                    sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
-                }
+        for (NodeInfo n : this.neighbors.getNeighborNodes()){
+            if(n.getNodeId()== specificNodeId){
+                sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
             }
-        }
-        finally{
-            neighborsLock.unlock();
         }
     }
 
 
 
     // Receives the addressingTable and its owner id
-    public boolean updateAddressingTable(AddressingTable at, Integer neighborId){
+    public synchronized boolean updateAddressingTable(AddressingTable at, Integer neighborId){
         boolean updated = false;
 
         for (Map.Entry<Integer, ArrayList<AddressingTable.Value>> m : at.getDistanceVector().entrySet()){
@@ -376,22 +328,16 @@ public class Ott implements Runnable {
     }
 
 
-    public void updateNeighborState(int neighborId, NodeInfo.nodeState state){
-        try {
-            neighborsLock.lock();
-            if(this.neighbors.getMap().containsKey(neighborId))
-                this.neighbors.setNodeState(neighborId, state);
-        }
-        finally{
-            neighborsLock.unlock();
-        }
+    public synchronized void updateNeighborState(int neighborId, NodeInfo.nodeState state){
+        if(this.neighbors.getMap().containsKey(neighborId))
+            this.neighbors.setNodeState(neighborId, state);
 
         boolean isOn = state.equals(NodeInfo.nodeState.ON);
         this.addressingTable.setNeighborState(neighborId, isOn);
     }
 
 
-    public  void requestStream(){
+    public synchronized void requestStream(){
         int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); // Node closest to the bootstrapper
 
         if(nodeToRequestStream<0)
@@ -406,36 +352,22 @@ public class Ott implements Runnable {
 
     }
 
-    public void streamPacket(RTPpacket rtPpacket){
-        try {
-            nodesToStreamToLock.lock();
-            neighborsLock.lock();
-            for(Integer nodeId: this.nodesToStreamTo){
-                if(this.neighbors.getNodeState(nodeId) == NodeInfo.nodeState.ON){ // Only streams to alive nodes
-                    InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
-                    int requestFromPort = this.neighbors.getNodePort(nodeId);
-                    sendPacket(rtPpacket, requestFromIp, requestFromPort);
-                    System.out.println("enviei stream............");
-                }
+    public synchronized void streamPacket(RTPpacket rtPpacket){
+        for(Integer nodeId: this.nodesToStreamTo){
+            if(this.neighbors.getNodeState(nodeId) == NodeInfo.nodeState.ON){ // Only streams to alive nodes
+                InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
+                int requestFromPort = this.neighbors.getNodePort(nodeId);
+                sendPacket(rtPpacket, requestFromIp, requestFromPort);
+                System.out.println("enviei stream............");
             }
-        }
-        finally{
-            neighborsLock.unlock();
-            nodesToStreamToLock.unlock();
         }
     }
 
 
-    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+    public synchronized void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
         sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-        try{
-            this.neighborsLock.lock();
-            this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
-        }
-        finally {
-            this.neighborsLock.unlock();
-        }
+        this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
     }
 
 
@@ -491,7 +423,7 @@ public class Ott implements Runnable {
     }
 
 
-    public void processPacket(RTPpacket packetReceived){
+    public synchronized void processPacket(RTPpacket packetReceived){
 
         updateNeighborState(packetReceived.getSenderId(), NodeInfo.nodeState.ON);
 
@@ -501,13 +433,7 @@ public class Ott implements Runnable {
 
                 byte[] data = packetReceived.getPayload();
 
-                try {
-                    neighborsLock.lock();
-                    this.neighbors = (Table) StaticMethods.deserialize(data);
-                }
-                finally{
-                    neighborsLock.unlock();
-                }
+                this.neighbors = (Table) StaticMethods.deserialize(data);
 
                 System.out.println("-> Received neighbors information.\n");
 
@@ -527,19 +453,11 @@ public class Ott implements Runnable {
                 AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
 
                 // Update addressing table
-                boolean updated;
-
-                try{
-                    this.addressingTableLock.lock();
-                    updated = updateAddressingTable(at, packetReceived.getSenderId());
-                    // If the addressing table changed, notify the neighbors
-                    if(updated){
-                        sendAddressingTable();
-                        System.out.println(this.addressingTable.toString());
-                    }
-                }
-                finally {
-                    this.addressingTableLock.unlock();
+                boolean updated = updateAddressingTable(at, packetReceived.getSenderId());
+                // If the addressing table changed, notify the neighbors
+                if(updated){
+                    sendAddressingTable();
+                    System.out.println(this.addressingTable.toString());
                 }
                 break;
 
@@ -547,13 +465,7 @@ public class Ott implements Runnable {
 
             case 22: // Isolated neighbor wants to be updated, mandatory request to ask for
                 sendAddressingTable(packetReceived.getSenderId());
-                try{
-                    this.addressingTableLock.lock();
-                    System.out.println(this.addressingTable.toString());
-                }
-                finally {
-                    this.addressingTableLock.unlock();
-                }
+                System.out.println(this.addressingTable.toString());
 
                 break;
 
@@ -568,14 +480,7 @@ public class Ott implements Runnable {
 
 
             case 6: //IsAlive confirmation
-                try{
-                    this.neighborsLock.lock();
-                    this.neighbors.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
-                }
-                finally {
-                    this.neighborsLock.unlock();
-                }
-
+                this.neighbors.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
                 break;
 
 
@@ -583,13 +488,7 @@ public class Ott implements Runnable {
             case 7: //Node receives a stream request
 
                 // Ads requesting node to the list of nodes receiving the stream
-                try {
-                    nodesToStreamToLock.lock();
-                    this.nodesToStreamTo.add(packetReceived.getSenderId());
-                }
-                finally{
-                    nodesToStreamToLock.unlock();
-                }
+                this.nodesToStreamTo.add(packetReceived.getSenderId());
 
                 // If isn't receiving the stream, goes and asks for it
                 if(!this.streaming){
