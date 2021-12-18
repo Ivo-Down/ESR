@@ -19,6 +19,7 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
+    private Integer streamerID;
     private Table neighbors;
     private Lock neighborsLock = new ReentrantLock();
     private DatagramSocket socket;
@@ -46,6 +47,7 @@ public class Ott implements Runnable {
         this.framesQueue = new LinkedBlockingQueue<>();
         this.streaming = false;
         this.nodesToStreamTo = new HashSet<>();
+        this.streamerID=-1;
     }
 
 
@@ -187,7 +189,7 @@ public class Ott implements Runnable {
                                 this.addressingTableLock.lock();
                                 for (Integer nodeId: nodesThatDied){
                                     // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
-                                    if( nodeId == this.addressingTable.getBestNextNode(Constants.SERVER_ID)){
+                                    if( nodeId.equals(this.streamerID)){
                                         this.addressingTable.setNeighborState(nodeId, false);
                                         requestStream();
                                     }
@@ -221,6 +223,7 @@ public class Ott implements Runnable {
                         // Se for um pacote de streaming, nem vai processar
                         if(receivePacket.getPacketType()==26) {
                             this.streaming=true;  // it is streaming TODO POR ISTO DUMA MANEIRA MAIS ELEGANTE, VAI TAR SMP A DAR SET À  VAR
+                            this.streamerID=receivePacket.getSenderId();
                             this.framesQueue.add(receivePacket);
                         }
 
