@@ -36,6 +36,9 @@ public class AddressingTable implements Serializable {
         public void setCost(Integer cost) {
             this.cost = cost;
         }
+        public void setState(Boolean isOn) {
+            this.isOn = isOn;
+        }
 
         @Override
         public String toString() {
@@ -132,6 +135,16 @@ public class AddressingTable implements Serializable {
 
     public void setDistanceVector(HashMap<Integer, ArrayList<Value>> d) {
         this.distanceVector = d;
+    }
+
+
+    public void setNeighborState(int neighborId, Boolean isOn){
+        for( ArrayList<Value> l : this.distanceVector.values()){
+            for(Value v : l){
+                if(v.getNextNode() == neighborId)
+                    v.setState(isOn);
+            }
+        }
     }
 
 
