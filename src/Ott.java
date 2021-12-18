@@ -27,6 +27,7 @@ public class Ott implements Runnable {
     private boolean streaming;
     private HashSet<Integer> nodesToStreamTo;
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
+    private boolean receivingStream;
 
 
     // ------------------------------ CONSTRUCTORS ------------------------------
@@ -42,6 +43,7 @@ public class Ott implements Runnable {
         this.framesQueue = new LinkedBlockingQueue<>();
         this.streaming = false;
         this.nodesToStreamTo = new HashSet<>();
+        this.receivingStream = false;
     }
 
 
@@ -105,7 +107,6 @@ public class Ott implements Runnable {
 
             // Thread to stream, consumes from framesQueue and sends to all its receivingStreamNodes
             if(!this.isClient) {
-
                 new Thread(() -> {
                     System.out.println("===> STREAMING");
                     while(this.running){
@@ -121,84 +122,82 @@ public class Ott implements Runnable {
                         streamPacket(rtp_packet);
                     }
                 }).start();
+            }
 
 
+            new Thread(() -> {
+                // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
+                System.out.println("===> CHECKING IF NEIGHBORS ARE ALIVE");
 
+                // De x em x segundos vai verificar se os vizinhos ainda estão vivos
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.scheduleAtFixedRate(() -> {
 
-                new Thread(() -> {
-                    // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
-                    System.out.println("===> CHECKING IF NODES ARE ALIVE");
+                    try {
+                        for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
+                            // Get nodes that are flagged with 'ON'
 
-                    // De x em x segundos vai verificar se os servidores ainda estão vivos
-                    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-                    scheduler.scheduleAtFixedRate(() -> {
-
-                        try {
-                            for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
-                                // Get nodes that are flagged with 'ON'
-
-                                Table onlineNodes;
-                                synchronized (this.neighbors){
-                                    onlineNodes = this.neighbors.getNodesWithState(NodeInfo.nodeState.ON);
-                                }
-
-                                // For each online node, check if it is alive and change its state to UNKNOWN
-                                for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
-                                    if(e.getKey()!=Constants.SERVER_ID)
-                                        sendIsAliveCheck(e.getKey(), e.getValue());
-
-                                // Waits for the nodes to respond
-                                Thread.sleep(Constants.TIMEOUT_TIME);
-                            }
-
-                            HashSet<Integer> nodesThatDied = new HashSet<>();
-
-                            // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
+                            Table onlineNodes;
                             synchronized (this.neighbors){
-                                for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
-                                    if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
-
-                                        this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
-                                        this.neighbors.incDeathCount(e.getKey());
-                                        System.out.println("Node " + e.getKey() + " timed out.");
-                                        nodesThatDied.add(e.getKey());
-
-                                    }
-                                    if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED)){
-                                        this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
-                                        //System.out.println("Node " + e.getKey() + " is alive.");
-                                    }
-                                }
-
-                                //this.neighbors.printTable();
+                                onlineNodes = this.neighbors.getNodesWithState(NodeInfo.nodeState.ON);
                             }
 
-                            synchronized (this.addressingTable){
-                                for (Integer nodeId: nodesThatDied){
-                                    // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
-                                    this.addressingTable.setNeighborState(nodeId, false);
-                                    if(nodeId.equals(this.streamerId))
-                                        requestStream();
+                            // For each online node, check if it is alive and change its state to UNKNOWN
+                            for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
+                                if(e.getKey()!=Constants.SERVER_ID)
+                                    sendIsAliveCheck(e.getKey(), e.getValue());
 
-
-                                }
-                            }
-
-                            // Deixa de enviar a stream para os nodos que morreram
-                            synchronized (this.nodesToStreamTo){
-                                for (Integer nodeId: nodesThatDied)
-                                    this.nodesToStreamTo.remove(nodeId);
-                            }
-
-
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                            // Waits for the nodes to respond
+                            Thread.sleep(Constants.TIMEOUT_TIME);
                         }
 
-                    }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
+                        HashSet<Integer> nodesThatDied = new HashSet<>();
 
-                }).start();
-            }
+                        // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
+                        synchronized (this.neighbors){
+                            for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                                    this.neighbors.incDeathCount(e.getKey());
+                                    System.out.println("Node " + e.getKey() + " timed out.");
+                                    nodesThatDied.add(e.getKey());
+
+                                }
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED)){
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
+                                    //System.out.println("Node " + e.getKey() + " is alive.");
+                                }
+                            }
+
+                            //this.neighbors.printTable();
+                        }
+
+                        synchronized (this.addressingTable){
+                            for (Integer nodeId: nodesThatDied){
+                                // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
+                                this.addressingTable.setNeighborState(nodeId, false);
+                                if(nodeId.equals(this.streamerId))
+                                    requestStream();
+
+
+                            }
+                        }
+
+                        // Deixa de enviar a stream para os nodos que morreram
+                        synchronized (this.nodesToStreamTo){
+                            for (Integer nodeId: nodesThatDied)
+                                this.nodesToStreamTo.remove(nodeId);
+                        }
+
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
+
+            }).start();
 
 
             new Thread(() -> {
@@ -212,6 +211,7 @@ public class Ott implements Runnable {
                         if(receivePacket.getPacketType()==26) {
                             this.streaming=true;
                             this.streamerId=receivePacket.getSenderId();
+                            this.receivingStream=true;
                             this.framesQueue.add(receivePacket);
                         }
 
@@ -347,8 +347,10 @@ public class Ott implements Runnable {
     public synchronized void requestStream(){
         int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); // Node closest to the bootstrapper
 
-        if(nodeToRequestStream<0)
+        if(nodeToRequestStream<0){
             System.out.println("Impossible to request stream, there is no possible path available.");
+            this.receivingStream=false;
+        }
 
         else{
             InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
@@ -472,6 +474,13 @@ public class Ott implements Runnable {
                         System.out.println(this.addressingTable.toString());
                     }
                 }
+
+                // Se for cliente e não estiver a receber a stream
+                if(this.isClient && !this.receivingStream){
+                    requestStream();
+                    System.out.println("SOU LINDO FDS");
+                }
+
                 break;
 
 
@@ -500,13 +509,27 @@ public class Ott implements Runnable {
 
             case 7: //Node receives a stream request
 
-                // Ads requesting node to the list of nodes receiving the stream
-                this.nodesToStreamTo.add(packetReceived.getSenderId());
+                if(!this.isClient){
 
-                // If isn't receiving the stream, goes and asks for it
-                if(!this.streaming){
-                    requestStream();
+                    // Ads requesting node to the list of nodes receiving the stream
+                    this.nodesToStreamTo.add(packetReceived.getSenderId());
+
+                    // If isn't receiving the stream, goes and asks for it
+                    if(!this.streaming){
+                        requestStream();
+
+                        if(!this.receivingStream)
+                            sendPacket(new byte[0], 8, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                    }
+
                 }
+                break;
+
+
+
+            case 8: //Nodo a quem pedimos a stream nao a consegue obter
+                this.receivingStream=false;
+                System.out.println("RECEBI PACOTE TIPO 8 CRL");
                 break;
         }
     }
