@@ -110,7 +110,7 @@ public class Streamer extends JFrame implements ActionListener {
 
                     //For each node sends stream frame
                     try{
-                        this.nodesToStreamToLock.lock();  //todo not sure if this works
+                        this.nodesToStreamToLock.lock();
                         for(Map.Entry<Integer, NodeInfo> nodeToStream : this.nodesToStreamTo.entrySet()){
 
                             RTPpacket rtp_packet = new RTPpacket(sBuf, 26, imagenb, Constants.SERVER_ID, image_length);

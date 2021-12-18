@@ -159,28 +159,35 @@ public class Ott implements Runnable {
                                     if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
 
                                         this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                                        this.neighbors.incDeathCount(e.getKey());
                                         System.out.println("Node " + e.getKey() + " timed out.");
                                         nodesThatDied.add(e.getKey());
 
                                     }
                                     if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED)){
                                         this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
-                                        System.out.println("Node " + e.getKey() + " is alive.");
+                                        //System.out.println("Node " + e.getKey() + " is alive.");
                                     }
                                 }
 
-                                this.neighbors.printTable();
+                                //this.neighbors.printTable();
                             }
 
                             synchronized (this.addressingTable){
                                 for (Integer nodeId: nodesThatDied){
                                     // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
-                                    if(nodeId.equals(this.streamerId)){
-                                        this.addressingTable.setNeighborState(nodeId, false);
-                                        requestStream();
-                                    }
                                     this.addressingTable.setNeighborState(nodeId, false);
+                                    if(nodeId.equals(this.streamerId))
+                                        requestStream();
+
+
                                 }
+                            }
+
+                            // Deixa de enviar a stream para os nodos que morreram
+                            synchronized (this.nodesToStreamTo){
+                                for (Integer nodeId: nodesThatDied)
+                                    this.nodesToStreamTo.remove(nodeId);
                             }
 
 
@@ -358,14 +365,13 @@ public class Ott implements Runnable {
                 InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
                 int requestFromPort = this.neighbors.getNodePort(nodeId);
                 sendPacket(rtPpacket, requestFromIp, requestFromPort);
-                System.out.println("enviei stream............");
             }
         }
     }
 
 
     public synchronized void sendIsAliveCheck (int id, NodeInfo nodeInfo){
-        System.out.println("Checking if node "+ id+" is alive.");
+        //System.out.println("Checking if node "+ id+" is alive.");
         sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
         this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
     }
@@ -435,7 +441,7 @@ public class Ott implements Runnable {
 
                 this.neighbors = (Table) StaticMethods.deserialize(data);
 
-                System.out.println("-> Received neighbors information.\n");
+                System.out.println("-> Received neighbors information from bootstrapper.\n");
 
                 // Inserts its neighbors in the addressing table
                 insertNeighborsInAddressingTable();
@@ -448,16 +454,23 @@ public class Ott implements Runnable {
 
 
             case 2: //Receives addressingTable information from a neighbor and updated addressingTable
+                // Se o nodo já tinha estado online e morreu, enviar tabela por solidariedade
+                if(this.neighbors.getDeathCount(packetReceived.getSenderId())>0){
+                    sendAddressingTable(packetReceived.getSenderId());
+                    System.out.println("Sent addressing table to reborn node.");
+                }
 
-                byte[] addrdata = packetReceived.getPayload();
-                AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
+                else{
+                    byte[] addrdata = packetReceived.getPayload();
+                    AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
 
-                // Update addressing table
-                boolean updated = updateAddressingTable(at, packetReceived.getSenderId());
-                // If the addressing table changed, notify the neighbors
-                if(updated){
-                    sendAddressingTable();
-                    System.out.println(this.addressingTable.toString());
+                    // Update addressing table
+                    boolean updated = updateAddressingTable(at, packetReceived.getSenderId());
+                    // If the addressing table changed, notify the neighbors
+                    if(updated){
+                        sendAddressingTable();
+                        System.out.println(this.addressingTable.toString());
+                    }
                 }
                 break;
 
@@ -473,7 +486,7 @@ public class Ott implements Runnable {
 
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
-                System.out.println("-> Received isAlive check. Replying.\n");
+                //System.out.println("-> Received isAlive check. Replying.\n");
                 sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 

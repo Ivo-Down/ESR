@@ -32,6 +32,10 @@ public class Table implements Serializable {
         return neighborNodes.get(nodeId).getNodePort();
     }
 
+    public int getDeathCount(int nodeId){
+        return neighborNodes.get(nodeId).getDeathCount();
+    }
+
     public NodeInfo.nodeState getNodeState(int nodeId){
         return neighborNodes.get(nodeId).getNodeState();
     }
@@ -39,6 +43,10 @@ public class Table implements Serializable {
 
     public void setNodeState(int nodeId, NodeInfo.nodeState state){
         neighborNodes.get(nodeId).setNodeState(state);
+    }
+
+    public void incDeathCount(int nodeId){
+        neighborNodes.get(nodeId).incDeathCount();
     }
 
     public int getSize(){
