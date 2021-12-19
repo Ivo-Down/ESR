@@ -103,9 +103,14 @@ public class Ott implements Runnable {
                         int elapsedTime = timeStamp - lastSentTime;
 
                         if((m.getValue().getSentCounter() >= Constants.TRIES_UNTIL_TIMEOUT)){
-                            //TODO por nodo a OFF
+
                             this.pendingRequestsTable.remove(m.getKey());
-                            System.out.println("Node timed out!");
+                            int nodeId = this.neighbors.getNodeByIpAndPort(m.getValue().getIpDestinyNode(),m.getValue().getPortDestinyNode());
+                            if(nodeId>0){
+                                updateNeighborState(nodeId, NodeInfo.nodeState.OFF);
+                                System.out.println("Node " + nodeId+"  timed out!");
+                            }
+
 
                         }else if(elapsedTime > 100) {
                             int actualCounter = m.getValue().getSentCounter() +1;
@@ -113,7 +118,7 @@ public class Ott implements Runnable {
                             timeStamp = (int) (System.currentTimeMillis());
                             m.getValue().setTimeStamp(timeStamp);
 
-                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\ttype: " + m.getValue().getPacket().getPacketType());
+                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\tport: "+ m.getValue().getPortDestinyNode()+ "\ttype: " + m.getValue().getPacket().getPacketType());
                             sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
 
                         }
@@ -318,7 +323,7 @@ public class Ott implements Runnable {
             packetType = 22;
 
         for (NodeInfo n : this.neighbors.getNeighborNodes())
-            if(n.getNodeId()!=Constants.SERVER_ID)
+            if(n.getNodeId()!=Constants.SERVER_ID && n.getNodeId()!=this.id)
                 sendPacket(data, packetType, this.id, n.getNodeIp(), n.getNodePort());
     }
 
@@ -455,8 +460,12 @@ public class Ott implements Runnable {
                 int request = this.requestID.intValue();
                 PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
                 if(!this.pendingRequestsTable.containsKey(request)) {
-                    pendingRequestsTable.put(request, pr);
-                    this.requestID.getAndIncrement();
+                    int packetNumber = getRequest(packetType, IP, port);
+                    if(packetNumber<0){
+                        pendingRequestsTable.put(request, pr);
+                        this.requestID.getAndIncrement();
+                    }
+
                 }
             }
             //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
@@ -464,6 +473,17 @@ public class Ott implements Runnable {
         } catch (IOException e){
             e.printStackTrace();
         }
+    }
+
+
+
+    // Retorna, se existir, um pacote daquele tipo um determinado nodo
+    public int getRequest(int packetType, InetAddress ip, int port){
+        for(Map.Entry<Integer, PendingRequests> e: pendingRequestsTable.entrySet()){
+            if(e.getValue().getIpDestinyNode().equals(ip) && e.getValue().getPortDestinyNode()==port && e.getValue().getPacket().getPacketType()==packetType)
+                return e.getKey();
+        }
+        return -1;
     }
 
 
@@ -489,9 +509,9 @@ public class Ott implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
 
-            if(rtpPacket.getPacketType()!=26){
-                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId());
-                //rtpPacket.printPacketHeader();
+            //Para nao printar o spam
+            if(rtpPacket.getPacketType()!=26 && rtpPacket.getPacketType()!=5 && rtpPacket.getPacketType()!=6){
+                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId()+ "\tType: " + rtpPacket.getPacketType());
             }
 
         } catch (IOException e){
@@ -571,7 +591,6 @@ public class Ott implements Runnable {
 
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
-                //System.out.println("-> Received isAlive check. Replying.\n");
                 sendPacket(new byte[0], 6, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
@@ -602,8 +621,9 @@ public class Ott implements Runnable {
 
 
             case 8: //RECEIVING CONFIRMATION
-                this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
-                System.out.println("Removing request "+ packetReceived.getSequenceNumber()+".");
+                PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                if(res!=null)
+                    System.out.println("Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
                 break;
 
 

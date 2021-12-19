@@ -23,6 +23,14 @@ public class Table implements Serializable {
         neighborNodes.put(nodeId, nodeInfo);
     }
 
+    public int getNodeByIpAndPort(InetAddress ip, int port){
+        for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
+            if(e.getValue().getNodeIp().equals(ip) && e.getValue().getNodePort()==port)
+                return e.getKey();
+        }
+        return -1;
+    }
+
 
 
     public InetAddress getNodeIP(int nodeId){ return neighborNodes.get(nodeId).getNodeIp(); }

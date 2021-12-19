@@ -77,6 +77,41 @@ public class OttBootStrapper implements Runnable {
                         System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
                 }).start();
 
+
+
+            new Thread(() -> {
+                System.out.println("===> CONSUMING PENDING REQUESTS");
+                while(true)
+                {
+                    for (ConcurrentHashMap.Entry<Integer,PendingRequests> m : pendingRequestsTable.entrySet()){
+                        int timeStamp = (int) (System.currentTimeMillis());
+                        int lastSentTime = m.getValue().getTimeStamp();
+                        int elapsedTime = timeStamp - lastSentTime;
+
+                        if((m.getValue().getSentCounter() >= Constants.TRIES_UNTIL_TIMEOUT)){
+                            //TODO por nodo a OFF
+                            this.pendingRequestsTable.remove(m.getKey());
+                            System.out.println("Packet " + m.getKey()+" timed out!");
+
+                        }else if(elapsedTime > 100) {
+                            int actualCounter = m.getValue().getSentCounter() +1;
+                            m.getValue().setSentCounter(actualCounter);
+                            timeStamp = (int) (System.currentTimeMillis());
+                            m.getValue().setTimeStamp(timeStamp);
+
+                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\ttype: " + m.getValue().getPacket().getPacketType());
+                            sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
+
+                        }
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
 /*
             new Thread(() -> {
                 // Esta thread vai periodicamente ver se os nodos ainda estão ativos e caso não estejam trata de os desligar
@@ -168,7 +203,7 @@ public class OttBootStrapper implements Runnable {
 
 
 
-    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+    /*public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
         sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
         try{
@@ -178,7 +213,7 @@ public class OttBootStrapper implements Runnable {
         finally {
             this.overlayNodesLock.unlock();
         }
-    }
+    }*/
 
 
 
@@ -268,6 +303,52 @@ public class OttBootStrapper implements Runnable {
         }
     }
 
+    public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
+        try{
+            byte[] payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
+            int timeStamp = (int) (System.currentTimeMillis() );
+            RTPpacket newPacket = new RTPpacket(payload, 8, packetID, this.id, timeStamp);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            this.socket.send(packet);
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    public void sendPacket(byte [] payload, int packetType, int senderId, InetAddress IP, int port){
+        try{
+            int timeStamp = (int) (System.currentTimeMillis());
+            int seq = this.requestID.intValue();
+            RTPpacket newPacket = new RTPpacket(payload, packetType, seq, senderId, timeStamp);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            this.socket.send(packet);
+
+            // Se enviar um pacote de um destes tipos, vai ficar à espera de confirmção
+            if(packetType==1){
+                int request = this.requestID.intValue();
+                PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
+                if(!this.pendingRequestsTable.containsKey(request)) {
+                    pendingRequestsTable.put(request, pr);
+                    this.requestID.getAndIncrement();
+                }
+            }
+
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    public void sendRepeatedPacket(RTPpacket newPacket, InetAddress IP, int port){
+        try{
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            this.socket.send(packet);
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
     public RTPpacket receivePacket(){
         RTPpacket rtpPacket = new RTPpacket();
         try{
@@ -278,7 +359,7 @@ public class OttBootStrapper implements Runnable {
             Integer fromPort = packet.getPort();
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tType: " + rtpPacket.getPacketType());
+            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId()+ "\tType: " + rtpPacket.getPacketType());
             //rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
@@ -286,25 +367,6 @@ public class OttBootStrapper implements Runnable {
         return rtpPacket;
     }
 
-    public RTPpacket receivePacket(int timeout){
-        RTPpacket rtpPacket;
-        try{
-            socket.setSoTimeout(timeout);
-            DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
-            socket.receive(packet);
-            socket.setSoTimeout(0);
-            InetAddress fromIp = packet.getAddress();
-            Integer fromPort = packet.getPort();
-
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received.");
-           // rtpPacket.printPacket();
-        } catch (IOException e){
-            e.printStackTrace();
-            return null;
-        }
-        return rtpPacket;
-    }
 
 
     public void processPacket(RTPpacket packetReceived){
@@ -337,13 +399,22 @@ public class OttBootStrapper implements Runnable {
                     sendPacket(data, 1, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                     sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 }*/
-                sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(data, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                //sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
 
-            case 6: //IsAlive confirmation
+            /*case 5: //Node receives a 'Is alive check'
+                // Sends a Im alive signal
+                sendPacket(new byte[0], 6,packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+            */
+
+
+            /*case 6: //IsAlive confirmation
                 System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
                 try{
                     this.overlayNodesLock.lock();
@@ -354,7 +425,7 @@ public class OttBootStrapper implements Runnable {
                 }
 
                 break;
-
+            */
 
 
             case 7: //Bootstrapper receives a stream request
@@ -369,11 +440,15 @@ public class OttBootStrapper implements Runnable {
                 finally {
                     this.nodesToStreamToLock.unlock();
                 }
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
-            case 8: //IsAlive confirmation
-                System.out.println("RECEBI CONFIRMAÇÃO DA TABELA UMA MERDA ISSO SO VAI");
 
+
+            case 8: //RECEIVING CONFIRMATION
+                PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                if(res!=null)
+                    System.out.println("Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
                 break;
         }
     }
