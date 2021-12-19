@@ -11,6 +11,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Random;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -250,7 +251,7 @@ public class OttBootStrapper implements Runnable {
 
     public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
         try{
-            int timeStamp = (int) (System.currentTimeMillis() / 1000);
+            int timeStamp = (int) (System.currentTimeMillis());
             RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
@@ -271,7 +272,7 @@ public class OttBootStrapper implements Runnable {
             Integer fromPort = packet.getPort();
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
+            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tType: " + rtpPacket.getPacketType());
             //rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
@@ -322,7 +323,12 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = StaticMethods.serialize(requestedNeighbors);
 
                 // Sending the answer
-                sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                Random rand = new Random();
+                int random = rand.nextInt()%2;
+                if(random ==1) {
+                System.out.println("PFOMANCE ENTREI!");
+                    sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                }
                 break;
 
 
@@ -353,6 +359,11 @@ public class OttBootStrapper implements Runnable {
                 finally {
                     this.nodesToStreamToLock.unlock();
                 }
+                break;
+
+            case 8: //IsAlive confirmation
+                System.out.println("RECEBI CONFIRMAÇÃO DA TABELA UMA MERDA ISSO SO VAI");
+
                 break;
         }
     }

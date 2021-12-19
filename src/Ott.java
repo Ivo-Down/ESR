@@ -6,10 +6,8 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Ott implements Runnable {
 
@@ -28,6 +26,8 @@ public class Ott implements Runnable {
     private HashSet<Integer> nodesToStreamTo;
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
     private boolean receivingStream;
+    private ConcurrentHashMap<Integer,PendingRequests> pendingRequestsTable;
+    private AtomicInteger requestID;
 
 
     // ------------------------------ CONSTRUCTORS ------------------------------
@@ -44,6 +44,8 @@ public class Ott implements Runnable {
         this.streaming = false;
         this.nodesToStreamTo = new HashSet<>();
         this.receivingStream = false;
+        this.pendingRequestsTable = new ConcurrentHashMap<>();
+        this.requestID = new AtomicInteger(1);
     }
 
 
@@ -90,6 +92,39 @@ public class Ott implements Runnable {
             this.running = false;
             this.socket = new DatagramSocket(this.port);
             System.out.println("Node is running!");
+
+            new Thread(() -> {
+                System.out.println("===> CONSUMING PENDING REQUESTS");
+                while(true)
+                {
+                    for (ConcurrentHashMap.Entry<Integer,PendingRequests> m : pendingRequestsTable.entrySet()){
+                        int timeStamp = (int) (System.currentTimeMillis());
+                        int lastSentTime = m.getValue().getTimeStamp();
+                        int elapsedTime = timeStamp - lastSentTime;
+
+                        if((m.getValue().getSentCounter() >= Constants.TRIES_UNTIL_TIMEOUT)){
+                            //TODO por nodo a OFF
+                            this.pendingRequestsTable.remove(m.getKey());
+                            System.out.println("Node timed out!");
+
+                        }else if(elapsedTime > 100) {
+                            int actualCounter = m.getValue().getSentCounter() +1;
+                            m.getValue().setSentCounter(actualCounter);
+                            timeStamp = (int) (System.currentTimeMillis());
+                            m.getValue().setTimeStamp(timeStamp);
+
+                            sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
+
+                        }
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
 
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
@@ -221,6 +256,8 @@ public class Ott implements Runnable {
                 }
             }).start();
 
+
+
             // ---> Main thread consuming the RTPpackets
             System.out.println("===> CONSUMING UDP");
             while(this.running){
@@ -246,7 +283,7 @@ public class Ott implements Runnable {
     public boolean openConnection(){
         try{
             // Sends signal to start the connection
-            sendPacket(new byte[0], 0, 1, this.id, InetAddress.getByName(Constants.SERVER_ADDRESS), Constants.DEFAULT_PORT);
+            sendPacket(new byte[0], 0, this.id, InetAddress.getByName(Constants.SERVER_ADDRESS), Constants.DEFAULT_PORT);
 
             // Awaits until the connection is confirmed
             RTPpacket receivePacket = receivePacket();
@@ -282,7 +319,7 @@ public class Ott implements Runnable {
 
         for (NodeInfo n : this.neighbors.getNeighborNodes())
             if(n.getNodeId()!=Constants.SERVER_ID)
-                sendPacket(data, packetType, 1, this.id, n.getNodeIp(), n.getNodePort());
+                sendPacket(data, packetType, this.id, n.getNodeIp(), n.getNodePort());
     }
 
     // Sends the addressingTable to that neighbor
@@ -292,7 +329,7 @@ public class Ott implements Runnable {
 
         for (NodeInfo n : this.neighbors.getNeighborNodes()){
             if(n.getNodeId()== specificNodeId){
-                sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
+                sendPacket(data, 2,this.id, n.getNodeIp(), n.getNodePort());
             }
         }
     }
@@ -356,7 +393,7 @@ public class Ott implements Runnable {
             InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
             int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
             System.out.println("Requesting stream to node " + nodeToRequestStream);
-            sendPacket(new byte[0], 7, 1, this.id, closerNodeIp, closerNodePort);
+            sendPacket(new byte[0], 7, this.id, closerNodeIp, closerNodePort);
         }
 
     }
@@ -374,7 +411,7 @@ public class Ott implements Runnable {
 
     public synchronized void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         //System.out.println("Checking if node "+ id+" is alive.");
-        sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+        sendPacket(new byte[0], 5, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
         this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
     }
 
@@ -391,15 +428,51 @@ public class Ott implements Runnable {
         }
     }
 
-
-    public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
+    public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
         try{
-            int timeStamp = (int) (System.currentTimeMillis() / 1000);
-
-            RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
+            byte[] payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
+            int timeStamp = (int) (System.currentTimeMillis() );
+            RTPpacket newPacket = new RTPpacket(payload, 8, packetID, this.id, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
+
+            //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            //newPacket.printPacketHeader();
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    public void sendPacket(byte [] payload, int packetType, int senderId, InetAddress IP, int port){
+        try{
+            int timeStamp = (int) (System.currentTimeMillis());
+            int seq = this.requestID.intValue();
+            RTPpacket newPacket = new RTPpacket(payload, packetType, seq, senderId, timeStamp);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+
+            this.socket.send(packet);
+            if(packetType!=26){
+                int request = this.requestID.intValue();
+                PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
+                if(!this.pendingRequestsTable.containsKey(request)) {
+                    pendingRequestsTable.put(request, pr);
+                    this.requestID.getAndIncrement();
+                }
+            }
+            //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
+            //newPacket.printPacketHeader();
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+
+    public void sendRepeatedPacket(RTPpacket newPacket, InetAddress IP, int port){
+        try{
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            this.socket.send(packet);
+            System.out.println("ENVIEI PACOTE REPETIDO!");
             //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
             //newPacket.printPacketHeader();
         } catch (IOException e){
@@ -451,6 +524,8 @@ public class Ott implements Runnable {
                 // Sends to each neighbor the addressing table
                 sendAddressingTable();
                 System.out.println(this.addressingTable.toString());
+
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
@@ -483,7 +558,7 @@ public class Ott implements Runnable {
                 if(!this.isClient && !this.receivingStream && this.nodesToStreamTo.size()>0){
                     requestStream();
                 }
-
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
@@ -492,6 +567,7 @@ public class Ott implements Runnable {
                 sendAddressingTable(packetReceived.getSenderId());
                 System.out.println(this.addressingTable.toString());
 
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
@@ -499,7 +575,7 @@ public class Ott implements Runnable {
             case 5: //Node receives a 'Is alive check'
                 // Sends a Im alive signal
                 //System.out.println("-> Received isAlive check. Replying.\n");
-                sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(new byte[0], 6, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
 
@@ -521,9 +597,14 @@ public class Ott implements Runnable {
                     if(!this.streaming){
                         requestStream();
                     }
+
                 }
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
+            case 8: //RECEIVING CONFIRMATION
+                this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                break;
 
 
         }
