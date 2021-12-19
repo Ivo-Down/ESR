@@ -68,6 +68,8 @@ public class NodeInfo implements Serializable {
                 "nodeIp=" + nodeIp +
                 ", nodePort=" + nodePort +
                 ", nodeState=" + nodeState +
+                ", nodeId=" + nodeId +
+                ", deathCount=" + deathCount +
                 '}';
     }
 }
