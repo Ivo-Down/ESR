@@ -345,7 +345,7 @@ public class Ott implements Runnable {
 
 
     public synchronized void requestStream(){
-        int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); // Node closest to the bootstrapper
+        int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID, this.nodesToStreamTo); // Node closest to the bootstrapper
 
         if(nodeToRequestStream<0){
             System.out.println("Impossible to request stream, there is no possible path available.");
@@ -478,7 +478,10 @@ public class Ott implements Runnable {
                 // Se for cliente e não estiver a receber a stream
                 if(this.isClient && !this.receivingStream){
                     requestStream();
-                    System.out.println("SOU LINDO FDS");
+                }
+
+                if(!this.isClient && !this.receivingStream && this.nodesToStreamTo.size()>0){
+                    requestStream();
                 }
 
                 break;
@@ -517,20 +520,12 @@ public class Ott implements Runnable {
                     // If isn't receiving the stream, goes and asks for it
                     if(!this.streaming){
                         requestStream();
-
-                        if(!this.receivingStream)
-                            sendPacket(new byte[0], 8, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                     }
-
                 }
                 break;
 
 
 
-            case 8: //Nodo a quem pedimos a stream nao a consegue obter
-                this.receivingStream=false;
-                System.out.println("RECEBI PACOTE TIPO 8 CRL");
-                break;
         }
     }
 
