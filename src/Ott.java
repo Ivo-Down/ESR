@@ -113,6 +113,7 @@ public class Ott implements Runnable {
                             timeStamp = (int) (System.currentTimeMillis());
                             m.getValue().setTimeStamp(timeStamp);
 
+                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\ttype: " + m.getValue().getPacket().getPacketType());
                             sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
 
                         }
@@ -127,7 +128,6 @@ public class Ott implements Runnable {
 
 
             running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
-
 
             // If it is a client, run thread to consume stream from special socket
             if(this.isClient) {
@@ -436,9 +436,6 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
-
-            //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
-            //newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -452,7 +449,9 @@ public class Ott implements Runnable {
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
-            if(packetType!=26){
+
+            // Se enviar um pacote de um destes tipos, vai ficar à espera de confirmção
+            if(packetType==2 || packetType==22 || packetType==7 || packetType==0){
                 int request = this.requestID.intValue();
                 PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
                 if(!this.pendingRequestsTable.containsKey(request)) {
@@ -472,8 +471,6 @@ public class Ott implements Runnable {
         try{
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
-            System.out.println("ENVIEI PACOTE REPETIDO!");
-            //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
             //newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
@@ -492,10 +489,10 @@ public class Ott implements Runnable {
 
             rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
 
-            /*if(rtpPacket.getPacketType()!=26){
-                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
-                rtpPacket.printPacketHeader();
-            }*/
+            if(rtpPacket.getPacketType()!=26){
+                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId());
+                //rtpPacket.printPacketHeader();
+            }
 
         } catch (IOException e){
             e.printStackTrace();
@@ -602,8 +599,11 @@ public class Ott implements Runnable {
                 sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
+
+
             case 8: //RECEIVING CONFIRMATION
                 this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                System.out.println("Removing request "+ packetReceived.getSequenceNumber()+".");
                 break;
 
 

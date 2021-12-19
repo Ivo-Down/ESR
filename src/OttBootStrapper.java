@@ -11,8 +11,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -29,6 +30,9 @@ public class OttBootStrapper implements Runnable {
     private HashMap<Integer, NodeInfo> nodesToStreamTo;
     private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
+    private ConcurrentHashMap<Integer,PendingRequests> pendingRequestsTable;
+    private AtomicInteger requestID;
+
 
 
     // ------------------------------ CONSTRUCTORS ------------------------------
@@ -39,6 +43,8 @@ public class OttBootStrapper implements Runnable {
         this.overlayNodes = this.getAllNodes();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.nodesToStreamTo = new HashMap<>();
+        this.pendingRequestsTable = new ConcurrentHashMap<>();
+        this.requestID = new AtomicInteger(1);
 
         try{
             this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
@@ -323,12 +329,16 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = StaticMethods.serialize(requestedNeighbors);
 
                 // Sending the answer
-                Random rand = new Random();
+
+                /*Random rand = new Random();
                 int random = rand.nextInt()%2;
                 if(random ==1) {
                 System.out.println("PFOMANCE ENTREI!");
-                    sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                }
+                    sendPacket(data, 1, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                    sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                }*/
+                sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 break;
 
 
