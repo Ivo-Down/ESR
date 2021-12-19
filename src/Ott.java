@@ -98,7 +98,7 @@ public class Ott implements Runnable {
             if(this.isClient) {
                 System.out.println("===> WATCHING STREAM");
                 new Thread(() -> {
-                    Client c = new Client(this.framesQueue);
+                    Client c = new Client(this.framesQueue, this.id);
                     // Requesting stream to the nearest streaming node
                     requestStream();
 
