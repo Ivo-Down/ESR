@@ -2,18 +2,13 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-public class RTPpacket{
+public class OttPacket {
 
+    private byte[] header;
+    private byte[] payload;
+    private InetAddress fromIp;
+    private Integer fromPort;
 
-      private byte[] header;
-      private byte[] payload;
-      private InetAddress fromIp;
-      private Integer fromPort;
-
-
-    /** Payload Types:
-     *  26 -> sending stream        Bootstrapper|Ott -> Ott|Client
-     */
 
     /**
      *  Header:
@@ -24,32 +19,44 @@ public class RTPpacket{
      *      int payloadSize
      */
 
+    /** Payload Types:
+     *  0 -> requesting bootstrapper for the neighbors    Ott->Bootstrapper
+     *  1 -> sending neighbors table to the nodes         Bootstrapper->Ott
+     *  2 -> receiving addressing table from neighbor     Ott->Ott
+     *  3 -> requesting addressing table to neighbor      Ott->Ott
+     *  4 -> checking if Ott is alive                     Ott->Ott
+     *  5 -> confirming that is alive                     Ott->Ott
+     *  6 -> requesting stream                            Ott->Ott
+     *  7 -> confirming that packet was received          Ott->Ott
+     */
+
+
 
     // ------------------------------ CONSTRUCTORS ------------------------------
 
-    public RTPpacket(){
+    public OttPacket(){
         this.payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
     }
 
-    public RTPpacket (byte[] packet){
-        this.header = Arrays.copyOfRange(packet,0, Constants.RTPpacket_HEADER_SIZE);
+    public OttPacket (byte[] packet){
+        this.header = Arrays.copyOfRange(packet,0, Constants.OttPacket_HEADER_SIZE);
         int dataSize = getPayloadSize();
-        this.payload = Arrays.copyOfRange(packet,Constants.RTPpacket_HEADER_SIZE, Constants.RTPpacket_HEADER_SIZE + dataSize);
+        this.payload = Arrays.copyOfRange(packet,Constants.OttPacket_HEADER_SIZE, Constants.OttPacket_HEADER_SIZE + dataSize);
 
     }
 
-    public RTPpacket (byte[] packet, InetAddress fromIp, Integer fromPort){
-        this.header = Arrays.copyOfRange(packet,0, Constants.RTPpacket_HEADER_SIZE);
+    public OttPacket (byte[] packet, InetAddress fromIp, Integer fromPort){
+        this.header = Arrays.copyOfRange(packet,0, Constants.OttPacket_HEADER_SIZE);
         int dataSize = getPayloadSize();
-        this.payload = Arrays.copyOfRange(packet,Constants.RTPpacket_HEADER_SIZE, Constants.RTPpacket_HEADER_SIZE + dataSize);
+        this.payload = Arrays.copyOfRange(packet,Constants.OttPacket_HEADER_SIZE, Constants.OttPacket_HEADER_SIZE + dataSize);
         this.fromIp = fromIp;
         this.fromPort = fromPort;
 
     }
 
-    public RTPpacket (byte[] payload, int packetType, int sequenceNumber, int senderId, int timeStamp){
+    public OttPacket (byte[] payload, int packetType, int sequenceNumber, int senderId, int timeStamp){
         this.payload = payload;
-        this.header = new byte[Constants.RTPpacket_HEADER_SIZE];
+        this.header = new byte[Constants.OttPacket_HEADER_SIZE];
         setPacketType(packetType);
         setSequenceNumber(sequenceNumber);
         setSenderId(senderId);
@@ -96,7 +103,6 @@ public class RTPpacket{
         return ByteBuffer.wrap(this.header,8,4).getInt();
     }
 
-
     public void setTimeStamp(int chunkId){
         byte[] chunkIdBytes = ByteBuffer.allocate(4).putInt(chunkId).array();
         int i = 12;
@@ -107,6 +113,7 @@ public class RTPpacket{
     public int getTimeStamp(){
         return ByteBuffer.wrap(this.header,12,4).getInt();
     }
+    
 
 
     public void setPayloadSize(int chunkId){
@@ -130,7 +137,7 @@ public class RTPpacket{
 
 
     public byte[] getHeader(){
-        return Arrays.copyOfRange(this.header, 0, Constants.RTPpacket_HEADER_SIZE);
+        return Arrays.copyOfRange(this.header, 0, Constants.OttPacket_HEADER_SIZE);
     }
 
 
@@ -166,7 +173,6 @@ public class RTPpacket{
         System.out.println("    PacketType " + this.getPacketType());
         System.out.println("    SequenceNumber " + this.getSequenceNumber());
         System.out.println("    SenderId " + this.getSenderId());
-        System.out.println("    TimeStamp " + this.getTimeStamp());
         System.out.println("    PayloadSize " + this.getPayloadSize());
         System.out.println("    Payload " + new String(this.getPayload()) + "\n");
     }
@@ -175,15 +181,8 @@ public class RTPpacket{
         System.out.println("    PacketType " + this.getPacketType());
         System.out.println("    SequenceNumber " + this.getSequenceNumber());
         System.out.println("    SenderId " + this.getSenderId());
-        System.out.println("    TimeStamp " + this.getTimeStamp());
         System.out.println("    PayloadSize " + this.getPayloadSize() + "\n");
     }
-
-
-
-
-
-
 
 
 }

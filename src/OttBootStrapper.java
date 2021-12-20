@@ -26,7 +26,7 @@ public class OttBootStrapper implements Runnable {
     private Table overlayNodes;
     private Lock overlayNodesLock = new ReentrantLock();  //temos pelo menos duas threads a usar a Table 
     private DatagramSocket socket;
-    private LinkedBlockingQueue<RTPpacket> packetsQueue;
+    private LinkedBlockingQueue<OttPacket> packetsQueue;
     private HashMap<Integer, NodeInfo> nodesToStreamTo;
     private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
@@ -174,7 +174,7 @@ public class OttBootStrapper implements Runnable {
                 System.out.println("===> LISTENING UDP");
                 while(this.running)
                 {
-                    RTPpacket receivePacket = receivePacket();
+                    OttPacket receivePacket = receivePacket();
                     if(receivePacket!=null)
                         this.packetsQueue.add(receivePacket);
                 }
@@ -186,7 +186,7 @@ public class OttBootStrapper implements Runnable {
             System.out.println("===> CONSUMING UDP");
             while(this.running){
                 try{
-                    RTPpacket receivePacket = this.packetsQueue.take();
+                    OttPacket receivePacket = this.packetsQueue.take();
                     processPacket(receivePacket);
                 } catch (InterruptedException e){
                     e.printStackTrace();
@@ -306,10 +306,10 @@ public class OttBootStrapper implements Runnable {
     public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
         try{
             byte[] payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
-            int timeStamp = (int) (System.currentTimeMillis() );
-            RTPpacket newPacket = new RTPpacket(payload, 8, packetID, this.id, timeStamp);
+            int timeStamp = (int) (System.currentTimeMillis());
+            OttPacket newPacket = new OttPacket(payload, 7, packetID, this.id,timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
-            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            //System.out.println(">> Sent confirmation packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
             this.socket.send(packet);
         } catch (IOException e){
             e.printStackTrace();
@@ -320,7 +320,7 @@ public class OttBootStrapper implements Runnable {
         try{
             int timeStamp = (int) (System.currentTimeMillis());
             int seq = this.requestID.intValue();
-            RTPpacket newPacket = new RTPpacket(payload, packetType, seq, senderId, timeStamp);
+            OttPacket newPacket = new OttPacket(payload, packetType, seq, senderId,timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
             this.socket.send(packet);
@@ -340,7 +340,7 @@ public class OttBootStrapper implements Runnable {
         }
     }
 
-    public void sendRepeatedPacket(RTPpacket newPacket, InetAddress IP, int port){
+    public void sendRepeatedPacket(OttPacket newPacket, InetAddress IP, int port){
         try{
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
             this.socket.send(packet);
@@ -349,8 +349,8 @@ public class OttBootStrapper implements Runnable {
         }
     }
 
-    public RTPpacket receivePacket(){
-        RTPpacket rtpPacket = new RTPpacket();
+    public OttPacket receivePacket(){
+        OttPacket ottPacket = new OttPacket();
         try{
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
@@ -358,18 +358,18 @@ public class OttBootStrapper implements Runnable {
             InetAddress fromIp = packet.getAddress();
             Integer fromPort = packet.getPort();
 
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId()+ "\tType: " + rtpPacket.getPacketType());
+            ottPacket = new OttPacket(this.buffer, fromIp, fromPort);
+            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + ottPacket.getSenderId()+ "\tType: " + ottPacket.getPacketType());
             //rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
-        return rtpPacket;
+        return ottPacket;
     }
 
 
 
-    public void processPacket(RTPpacket packetReceived){
+    public void processPacket(OttPacket packetReceived){
         switch (packetReceived.getPacketType()) {
 
             case 0: //Node wants to get its neighbors
@@ -397,10 +397,11 @@ public class OttBootStrapper implements Runnable {
                 if(random ==1) {
                 System.out.println("PFOMANCE ENTREI!");
                     sendPacket(data, 1, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                    sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                    sendPacket(data, 7, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
                 }*/
+
                 sendPacket(data, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                //sendPacket(data, 8, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                //sendPacket(data, 7, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
 
                 sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
@@ -428,7 +429,7 @@ public class OttBootStrapper implements Runnable {
             */
 
 
-            case 7: //Bootstrapper receives a stream request
+            case 6: //Bootstrapper receives a stream request
 
                 // Ads requesting node to the list of nodes receiving the stream
                 int streamRequestId = packetReceived.getSenderId();
@@ -445,7 +446,7 @@ public class OttBootStrapper implements Runnable {
 
 
 
-            case 8: //RECEIVING CONFIRMATION
+            case 7: //RECEIVING CONFIRMATION
                 PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
                 if(res!=null)
                     System.out.println("Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");

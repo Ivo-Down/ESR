@@ -2,13 +2,13 @@ import java.net.InetAddress;
 
 public class PendingRequests {
     private Integer packetID;
-    private RTPpacket packet;
+    private OttPacket packet;
     private InetAddress ipDestinyNode;
     private Integer portDestinyNode;
     private Integer sentCounter;
     private Integer timeStamp;
 
-    public PendingRequests(Integer packetID, RTPpacket packet, InetAddress ipDestinyNode, Integer portDestinyNode, Integer sentCounter, Integer timeStamp) {
+    public PendingRequests(Integer packetID, OttPacket packet, InetAddress ipDestinyNode, Integer portDestinyNode, Integer sentCounter, Integer timeStamp) {
         this.packetID = packetID;
         this.packet = packet;
         this.ipDestinyNode = ipDestinyNode;
@@ -17,7 +17,7 @@ public class PendingRequests {
         this.timeStamp = timeStamp;
     }
 
-    public RTPpacket getPacket() {
+    public OttPacket getPacket() {
         return packet;
     }
 
