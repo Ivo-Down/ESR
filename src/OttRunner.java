@@ -2,7 +2,10 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 
-public class OrrRunner {
+public class OttRunner {
+    static {
+        System.setProperty("java.awt.headless","false");
+    }
     public static void main(String[] args) {
         try{
             switch (args.length) {

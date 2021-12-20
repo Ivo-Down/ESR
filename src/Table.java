@@ -74,7 +74,7 @@ public class Table implements Serializable {
 
 
     public ArrayList<Integer> getNeighborNodeIds(){
-        ArrayList<Integer> res = new ArrayList();
+        ArrayList<Integer> res = new ArrayList<>();
         for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
             res.add(e.getKey());
         }
@@ -82,7 +82,7 @@ public class Table implements Serializable {
     }
 
     public ArrayList<NodeInfo> getNeighborNodes(){
-        ArrayList<NodeInfo> res = new ArrayList();
+        ArrayList<NodeInfo> res = new ArrayList<>();
         for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
             res.add(e.getValue());
         }
