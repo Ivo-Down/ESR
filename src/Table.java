@@ -73,13 +73,6 @@ public class Table implements Serializable {
     }
 
 
-    public ArrayList<Integer> getNeighborNodeIds(){
-        ArrayList<Integer> res = new ArrayList<>();
-        for(Map.Entry<Integer, NodeInfo> e: neighborNodes.entrySet()){
-            res.add(e.getKey());
-        }
-        return res;
-    }
 
     public ArrayList<NodeInfo> getNeighborNodes(){
         ArrayList<NodeInfo> res = new ArrayList<>();
@@ -105,10 +98,6 @@ public class Table implements Serializable {
         return this.neighborNodes.get(nodeId);
     }
 
-
-    public void removeNode(int nodeId){
-        this.neighborNodes.remove(nodeId);
-    }
 
     @Override
     public String toString() {

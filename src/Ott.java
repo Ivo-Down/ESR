@@ -59,9 +59,6 @@ public class Ott implements Runnable {
         this.ip = ip;
     }
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
 
     public Integer getPort() {
         return port;
@@ -71,13 +68,6 @@ public class Ott implements Runnable {
         this.port = port;
     }
 
-    public Table getNeighbors() {
-        return neighbors;
-    }
-
-    public void setNeighbors(Table neighbors) {
-        this.neighbors = neighbors;
-    }
 
 
 
@@ -108,7 +98,7 @@ public class Ott implements Runnable {
                             int nodeId = this.neighbors.getNodeByIpAndPort(m.getValue().getIpDestinyNode(),m.getValue().getPortDestinyNode());
                             if(nodeId>0){
                                 updateNeighborState(nodeId, NodeInfo.nodeState.OFF);
-                                System.out.println("Node " + nodeId+"  timed out!");
+                                System.out.println("->Node " + nodeId+"  timed out!");
                             }
 
 
@@ -118,7 +108,7 @@ public class Ott implements Runnable {
                             timeStamp = (int) (System.currentTimeMillis());
                             m.getValue().setTimeStamp(timeStamp);
 
-                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\tport: "+ m.getValue().getPortDestinyNode()+ "\ttype: " + m.getValue().getPacket().getPacketType());
+                            System.out.println("->Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\tport: "+ m.getValue().getPortDestinyNode()+ "\ttype: " + m.getValue().getPacket().getPacketType());
                             sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
 
                         }
@@ -200,7 +190,7 @@ public class Ott implements Runnable {
 
                                     this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
                                     this.neighbors.incDeathCount(e.getKey());
-                                    System.out.println("Node " + e.getKey() + " timed out.");
+                                    System.out.println("->Node " + e.getKey() + " timed out.");
                                     nodesThatDied.add(e.getKey());
 
                                 }
@@ -314,7 +304,7 @@ public class Ott implements Runnable {
 
     public synchronized void insertNeighborsInAddressingTable(){
         for (NodeInfo n : this.neighbors.getNeighborNodes())
-            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true); //todo assumimos que começam a on?
+            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true);
     }
 
 
@@ -334,7 +324,7 @@ public class Ott implements Runnable {
 
     // Sends the addressingTable to that neighbor
     public synchronized void sendAddressingTable(Integer specificNodeId){
-        System.out.println("Sending updated table to neighbors.");
+        System.out.println("->Sending updated table to neighbors.");
         byte[] data = StaticMethods.serialize(this.addressingTable);
 
         for (NodeInfo n : this.neighbors.getNeighborNodes()){
@@ -375,9 +365,9 @@ public class Ott implements Runnable {
             }
         }
         if(updated)
-            System.out.println("Updated addressing table!");
+            System.out.println("->Updated addressing table!");
         else
-            System.out.println("Did not update addressing table.");
+            System.out.println("->Did not update addressing table.");
         return updated;
     }
 
@@ -395,14 +385,14 @@ public class Ott implements Runnable {
         int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID, this.nodesToStreamTo); // Node closest to the bootstrapper
 
         if(nodeToRequestStream<0){
-            System.out.println("Impossible to request stream, there is no possible path available.");
+            System.out.println("->Impossible to request stream, there is no possible path available.");
             this.receivingStream=false;
         }
 
         else{
             InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
             int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
-            System.out.println("Requesting stream to node " + nodeToRequestStream);
+            System.out.println("->Requesting stream to node " + nodeToRequestStream);
             sendPacket(new byte[0], 6, this.id, closerNodeIp, closerNodePort);
         }
 
@@ -441,7 +431,7 @@ public class Ott implements Runnable {
             int timeStamp = (int) (System.currentTimeMillis());
             OttPacket newPacket = new OttPacket(payload, 7, packetID, this.id, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
-            //System.out.println(">> Sent confirmation packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            System.out.println("->Node "+ this.id +": \tsent confirmation packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
             this.socket.send(packet);
         } catch (IOException e){
             e.printStackTrace();
@@ -454,8 +444,11 @@ public class Ott implements Runnable {
             int seq = this.requestID.intValue();
             OttPacket newPacket = new OttPacket(payload, packetType, seq, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
-            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+
             this.socket.send(packet);
+
+            if(newPacket.getPacketType()!=26 && newPacket.getPacketType()!=4 && newPacket.getPacketType()!=5)
+                System.out.println("->Node "+ this.id +": \tsent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
 
             // Se enviar um pacote de um destes tipos, vai ficar à espera de confirmção
             if(packetType==2 || packetType==3 || packetType==6 || packetType==0){
@@ -500,28 +493,6 @@ public class Ott implements Runnable {
     }
 
 
-    public RTPpacket receiveRTPPacket(){
-        RTPpacket rtpPacket = new RTPpacket();
-        try{
-            DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
-            socket.receive(packet);
-            socket.setSoTimeout(0);  //removes any timeout existing
-            InetAddress fromIp = packet.getAddress();
-            Integer fromPort = packet.getPort();
-
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-
-            //Para nao printar o spam
-            if(rtpPacket.getPacketType()!=26 && rtpPacket.getPacketType()!=4 && rtpPacket.getPacketType()!=5){
-                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + rtpPacket.getSenderId()+ "\tType: " + rtpPacket.getPacketType());
-            }
-
-        } catch (IOException e){
-            e.printStackTrace();
-        }
-        return rtpPacket;
-    }
-
 
     public OttPacket receiveOttPacket(){
         OttPacket ottPacket = new OttPacket();
@@ -535,9 +506,9 @@ public class Ott implements Runnable {
             ottPacket = new OttPacket(this.buffer, fromIp, fromPort);
 
             //Para nao printar o spam
-            if(ottPacket.getPacketType()!=26 && ottPacket.getPacketType()!=4 && ottPacket.getPacketType()!=5){
-                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + ottPacket.getSenderId()+ "\tType: " + ottPacket.getPacketType());
-            }
+            if(ottPacket.getPacketType()!=26 && ottPacket.getPacketType()!=4 && ottPacket.getPacketType()!=5)
+                System.out.println("->Node "+ this.id +": \treceived packet from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + ottPacket.getSenderId()+ "\tType: " + ottPacket.getPacketType());
+
 
         } catch (IOException e){
             e.printStackTrace();
@@ -558,14 +529,14 @@ public class Ott implements Runnable {
 
                 this.neighbors = (Table) StaticMethods.deserialize(data);
 
-                System.out.println("-> Received neighbors information from bootstrapper.\n");
+                System.out.println("->Received neighbors information from bootstrapper.\n");
 
                 // Inserts its neighbors in the addressing table
                 insertNeighborsInAddressingTable();
 
                 // Sends to each neighbor the addressing table
                 sendAddressingTable();
-                System.out.println(this.addressingTable.toString());
+                System.out.println("Adressing Table:\n"+this.addressingTable.toString());
 
                 sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
@@ -576,7 +547,7 @@ public class Ott implements Runnable {
                 // Se o nodo já tinha estado online e morreu, enviar tabela por solidariedade
                 if(this.neighbors.getDeathCount(packetReceived.getSenderId())>0){
                     sendAddressingTable(packetReceived.getSenderId());
-                    System.out.println("Sent addressing table to reborn node.");
+                    System.out.println("->Sent addressing table to reborn node.");
                 }
 
                 else{
@@ -648,7 +619,7 @@ public class Ott implements Runnable {
             case 7: //RECEIVING CONFIRMATION
                 PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
                 if(res!=null)
-                    System.out.println("Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
+                    System.out.println("->Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
                 break;
 
 

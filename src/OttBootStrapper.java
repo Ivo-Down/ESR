@@ -69,12 +69,12 @@ public class OttBootStrapper implements Runnable {
             new Thread(() -> {
                 System.out.println("===> STREAMING VIDEO");
 
-                    File f = new File("src/movie.Mjpeg");
+                    File f = new File("movie.Mjpeg");
                     if (f.exists()) {
 
-                        Streamer s = new Streamer("src/movie.Mjpeg", this.nodesToStreamTo, this.nodesToStreamToLock, this.socket);
+                        Streamer s = new Streamer("movie.Mjpeg", this.nodesToStreamTo, this.nodesToStreamToLock, this.socket);
                     } else
-                        System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
+                        System.out.println("Ficheiro de video não existe: " + "movie.Mjpeg");
                 }).start();
 
 
@@ -229,7 +229,7 @@ public class OttBootStrapper implements Runnable {
 
         // NOTA: ISTO ESTA MAL OTIMIZADO, PERCORRE 2 VEZES A ESTRUTURA PARA IR BUSCAR OS DADOS
         try {
-            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("overlay.json"));
 
             for (Object o: jsonArray){
                 JSONObject node = (JSONObject) o;
@@ -270,7 +270,7 @@ public class OttBootStrapper implements Runnable {
         JSONParser parser = new JSONParser();
         Table res = new Table();
         try {
-            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("overlay.json"));
 
             for (Object o: jsonArray){
                 JSONObject node = (JSONObject) o;
@@ -290,18 +290,6 @@ public class OttBootStrapper implements Runnable {
 
 
 
-    public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
-        try{
-            int timeStamp = (int) (System.currentTimeMillis());
-            RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
-            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
-            this.socket.send(packet);
-            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
-            //newPacket.printPacketHeader();
-        } catch (IOException e){
-            e.printStackTrace();
-        }
-    }
 
     public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
         try{
@@ -391,17 +379,7 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = StaticMethods.serialize(requestedNeighbors);
 
                 // Sending the answer
-
-                /*Random rand = new Random();
-                int random = rand.nextInt()%2;
-                if(random ==1) {
-                System.out.println("PFOMANCE ENTREI!");
-                    sendPacket(data, 1, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                    sendPacket(data, 7, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                }*/
-
                 sendPacket(data, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                //sendPacket(data, 7, packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
 
                 sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;

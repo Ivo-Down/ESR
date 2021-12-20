@@ -102,10 +102,6 @@ public class AddressingTable implements Serializable {
         return getBestValue(destinyNode).getCost();
     }
 
-    public int getBestNextNode(Integer destinyNode){
-        return getBestValue(destinyNode).getNextNode();
-    }
-
     // Returns the best value which is available
     public Value getBestValue(Integer destinyNode){
         Value res = new Value();
@@ -148,11 +144,6 @@ public class AddressingTable implements Serializable {
 
     public HashMap<Integer, ArrayList<Value>> getDistanceVector() {
         return distanceVector;
-    }
-
-
-    public void setDistanceVector(HashMap<Integer, ArrayList<Value>> d) {
-        this.distanceVector = d;
     }
 
 
