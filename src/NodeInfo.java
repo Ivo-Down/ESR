@@ -42,6 +42,8 @@ public class NodeInfo implements Serializable {
 
     public void incDeathCount(){this.deathCount+=1;}
 
+    public void decDeathCount(){this.deathCount-=1;}
+
     public NodeInfo.nodeState getNodeState() {
         return nodeState;
     }

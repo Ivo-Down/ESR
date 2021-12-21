@@ -546,8 +546,9 @@ public class Ott implements Runnable {
             case 2: //Receives addressingTable information from a neighbor and updated addressingTable
                 // Se o nodo já tinha estado online e morreu, enviar tabela por solidariedade
                 if(this.neighbors.getDeathCount(packetReceived.getSenderId())>0){
-                    sendAddressingTable(packetReceived.getSenderId());
                     System.out.println("->Sent addressing table to reborn node.");
+                    sendAddressingTable(packetReceived.getSenderId());
+                    this.neighbors.decDeathCount(packetReceived.getSenderId());
                 }
 
                 else{

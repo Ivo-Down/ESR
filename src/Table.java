@@ -57,6 +57,10 @@ public class Table implements Serializable {
         neighborNodes.get(nodeId).incDeathCount();
     }
 
+    public void decDeathCount(int nodeId){
+        neighborNodes.get(nodeId).decDeathCount();
+    }
+
     public int getSize(){
         return this.neighborNodes.size();
     }
