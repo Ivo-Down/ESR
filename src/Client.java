@@ -17,7 +17,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class Client {
 
   //------------------------------------GUI-------------------------------
-  JFrame f = new JFrame("Cliente Teste");
+  JFrame f = new JFrame("");
   JButton setupButton = new JButton("Setup");
   JButton playButton = new JButton("Play");
   JButton pauseButton = new JButton("Pause");
@@ -52,7 +52,7 @@ public class Client {
   LinkedBlockingQueue<RTPpacket> framesQueue;
 
   //-------------------------------CONSTRUCTOR-------------------------------
-  public Client(LinkedBlockingQueue<RTPpacket> framesQueue) {
+  public Client(LinkedBlockingQueue<RTPpacket> framesQueue, Integer idCliente) {
 
     //------------------------------BUILD GUI-------------------------------
     //Frame
@@ -95,6 +95,7 @@ public class Client {
     statLabel3.setBounds(0,370,380,20);
 
     //Box
+    f.setTitle("Node: " + idCliente );
     f.getContentPane().add(mainPanel, BorderLayout.CENTER);
     f.setSize(new Dimension(390,430));
     f.setVisible(true);

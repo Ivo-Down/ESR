@@ -12,12 +12,14 @@ public class NodeInfo implements Serializable {
     private Integer nodePort;
     private nodeState nodeState;
     private Integer nodeId;
+    private Integer deathCount;
 
     public NodeInfo(InetAddress ip, int port, nodeState state, int nodeId){
         this.nodeIp = ip;
         this.nodePort = port;
         this.nodeState = state;
         this.nodeId = nodeId;
+        this.deathCount = 0;
     }
 
 
@@ -26,25 +28,21 @@ public class NodeInfo implements Serializable {
         return nodeIp;
     }
 
-    public void setNodeIp(InetAddress nodeIp) {
-        this.nodeIp = nodeIp;
-    }
-
     public int getNodePort() {
         return nodePort;
-    }
-
-    public void setNodeId(Integer nodeId) {
-        this.nodeId = nodeId;
     }
 
     public int getNodeId() {
         return nodeId;
     }
 
-    public void setNodePort(int nodePort) {
-        this.nodePort = nodePort;
+    public int getDeathCount() {
+        return deathCount;
     }
+
+    public void incDeathCount(){this.deathCount+=1;}
+
+    public void decDeathCount(){this.deathCount-=1;}
 
     public NodeInfo.nodeState getNodeState() {
         return nodeState;
@@ -60,6 +58,8 @@ public class NodeInfo implements Serializable {
                 "nodeIp=" + nodeIp +
                 ", nodePort=" + nodePort +
                 ", nodeState=" + nodeState +
+                ", nodeId=" + nodeId +
+                ", deathCount=" + deathCount +
                 '}';
     }
 }

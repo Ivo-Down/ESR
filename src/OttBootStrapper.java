@@ -11,7 +11,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -24,10 +26,13 @@ public class OttBootStrapper implements Runnable {
     private Table overlayNodes;
     private Lock overlayNodesLock = new ReentrantLock();  //temos pelo menos duas threads a usar a Table 
     private DatagramSocket socket;
-    private LinkedBlockingQueue<RTPpacket> packetsQueue;
+    private LinkedBlockingQueue<OttPacket> packetsQueue;
     private HashMap<Integer, NodeInfo> nodesToStreamTo;
     private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
+    private ConcurrentHashMap<Integer,PendingRequests> pendingRequestsTable;
+    private AtomicInteger requestID;
+
 
 
     // ------------------------------ CONSTRUCTORS ------------------------------
@@ -38,6 +43,8 @@ public class OttBootStrapper implements Runnable {
         this.overlayNodes = this.getAllNodes();
         this.packetsQueue = new LinkedBlockingQueue<>();
         this.nodesToStreamTo = new HashMap<>();
+        this.pendingRequestsTable = new ConcurrentHashMap<>();
+        this.requestID = new AtomicInteger(1);
 
         try{
             this.ip = InetAddress.getByName(Constants.SERVER_ADDRESS);
@@ -62,13 +69,48 @@ public class OttBootStrapper implements Runnable {
             new Thread(() -> {
                 System.out.println("===> STREAMING VIDEO");
 
-                    File f = new File("src/movie.Mjpeg");
+                    File f = new File("movie.Mjpeg");
                     if (f.exists()) {
 
-                        Streamer s = new Streamer("src/movie.Mjpeg", this.nodesToStreamTo, this.nodesToStreamToLock, this.socket);
+                        Streamer s = new Streamer("movie.Mjpeg", this.nodesToStreamTo, this.nodesToStreamToLock, this.socket);
                     } else
-                        System.out.println("Ficheiro de video não existe: " + "src/movie.Mjpeg");
+                        System.out.println("Ficheiro de video não existe: " + "movie.Mjpeg");
                 }).start();
+
+
+
+            new Thread(() -> {
+                System.out.println("===> CONSUMING PENDING REQUESTS");
+                while(true)
+                {
+                    for (ConcurrentHashMap.Entry<Integer,PendingRequests> m : pendingRequestsTable.entrySet()){
+                        int timeStamp = (int) (System.currentTimeMillis());
+                        int lastSentTime = m.getValue().getTimeStamp();
+                        int elapsedTime = timeStamp - lastSentTime;
+
+                        if((m.getValue().getSentCounter() >= Constants.TRIES_UNTIL_TIMEOUT)){
+                            //TODO por nodo a OFF
+                            this.pendingRequestsTable.remove(m.getKey());
+                            System.out.println("Packet " + m.getKey()+" timed out!");
+
+                        }else if(elapsedTime > 100) {
+                            int actualCounter = m.getValue().getSentCounter() +1;
+                            m.getValue().setSentCounter(actualCounter);
+                            timeStamp = (int) (System.currentTimeMillis());
+                            m.getValue().setTimeStamp(timeStamp);
+
+                            System.out.println("Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\ttype: " + m.getValue().getPacket().getPacketType());
+                            sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
+
+                        }
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
 
 /*
             new Thread(() -> {
@@ -132,7 +174,7 @@ public class OttBootStrapper implements Runnable {
                 System.out.println("===> LISTENING UDP");
                 while(this.running)
                 {
-                    RTPpacket receivePacket = receivePacket();
+                    OttPacket receivePacket = receivePacket();
                     if(receivePacket!=null)
                         this.packetsQueue.add(receivePacket);
                 }
@@ -144,7 +186,7 @@ public class OttBootStrapper implements Runnable {
             System.out.println("===> CONSUMING UDP");
             while(this.running){
                 try{
-                    RTPpacket receivePacket = this.packetsQueue.take();
+                    OttPacket receivePacket = this.packetsQueue.take();
                     processPacket(receivePacket);
                 } catch (InterruptedException e){
                     e.printStackTrace();
@@ -161,7 +203,7 @@ public class OttBootStrapper implements Runnable {
 
 
 
-    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+    /*public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
         System.out.println("Checking if node "+ id+" is alive.");
         sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
         try{
@@ -171,7 +213,7 @@ public class OttBootStrapper implements Runnable {
         finally {
             this.overlayNodesLock.unlock();
         }
-    }
+    }*/
 
 
 
@@ -187,7 +229,7 @@ public class OttBootStrapper implements Runnable {
 
         // NOTA: ISTO ESTA MAL OTIMIZADO, PERCORRE 2 VEZES A ESTRUTURA PARA IR BUSCAR OS DADOS
         try {
-            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("overlay.json"));
 
             for (Object o: jsonArray){
                 JSONObject node = (JSONObject) o;
@@ -228,7 +270,7 @@ public class OttBootStrapper implements Runnable {
         JSONParser parser = new JSONParser();
         Table res = new Table();
         try {
-            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("src\\overlay.json"));
+            JSONArray jsonArray =  (JSONArray) parser.parse(new FileReader("overlay.json"));
 
             for (Object o: jsonArray){
                 JSONObject node = (JSONObject) o;
@@ -248,21 +290,55 @@ public class OttBootStrapper implements Runnable {
 
 
 
-    public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
+
+    public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
         try{
-            int timeStamp = (int) (System.currentTimeMillis() / 1000);
-            RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
+            byte[] payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
+            int timeStamp = (int) (System.currentTimeMillis());
+            OttPacket newPacket = new OttPacket(payload, 7, packetID, this.id,timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            //System.out.println(">> Sent confirmation packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
             this.socket.send(packet);
-            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
-            //newPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
     }
 
-    public RTPpacket receivePacket(){
-        RTPpacket rtpPacket = new RTPpacket();
+    public void sendPacket(byte [] payload, int packetType, int senderId, InetAddress IP, int port){
+        try{
+            int timeStamp = (int) (System.currentTimeMillis());
+            int seq = this.requestID.intValue();
+            OttPacket newPacket = new OttPacket(payload, packetType, seq, senderId,timeStamp);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            System.out.println(">> Sent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            this.socket.send(packet);
+
+            // Se enviar um pacote de um destes tipos, vai ficar à espera de confirmção
+            if(packetType==1){
+                int request = this.requestID.intValue();
+                PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
+                if(!this.pendingRequestsTable.containsKey(request)) {
+                    pendingRequestsTable.put(request, pr);
+                    this.requestID.getAndIncrement();
+                }
+            }
+
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    public void sendRepeatedPacket(OttPacket newPacket, InetAddress IP, int port){
+        try{
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            this.socket.send(packet);
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    public OttPacket receivePacket(){
+        OttPacket ottPacket = new OttPacket();
         try{
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
@@ -270,37 +346,18 @@ public class OttBootStrapper implements Runnable {
             InetAddress fromIp = packet.getAddress();
             Integer fromPort = packet.getPort();
 
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
+            ottPacket = new OttPacket(this.buffer, fromIp, fromPort);
+            System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + ottPacket.getSenderId()+ "\tType: " + ottPacket.getPacketType());
             //rtpPacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
-        return rtpPacket;
-    }
-
-    public RTPpacket receivePacket(int timeout){
-        RTPpacket rtpPacket;
-        try{
-            socket.setSoTimeout(timeout);
-            DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
-            socket.receive(packet);
-            socket.setSoTimeout(0);
-            InetAddress fromIp = packet.getAddress();
-            Integer fromPort = packet.getPort();
-
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
-            System.out.println(">> Packet received.");
-           // rtpPacket.printPacket();
-        } catch (IOException e){
-            e.printStackTrace();
-            return null;
-        }
-        return rtpPacket;
+        return ottPacket;
     }
 
 
-    public void processPacket(RTPpacket packetReceived){
+
+    public void processPacket(OttPacket packetReceived){
         switch (packetReceived.getPacketType()) {
 
             case 0: //Node wants to get its neighbors
@@ -322,12 +379,21 @@ public class OttBootStrapper implements Runnable {
                 byte[] data = StaticMethods.serialize(requestedNeighbors);
 
                 // Sending the answer
-                sendPacket(data, 1, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                sendPacket(data, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
 
-            case 6: //IsAlive confirmation
+            /*case 5: //Node receives a 'Is alive check'
+                // Sends a Im alive signal
+                sendPacket(new byte[0], 6,packetReceived.getSequenceNumber(), this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+            */
+
+
+            /*case 6: //IsAlive confirmation
                 System.out.println("Node " + packetReceived.getSenderId() + " is alive.");
                 try{
                     this.overlayNodesLock.lock();
@@ -338,10 +404,10 @@ public class OttBootStrapper implements Runnable {
                 }
 
                 break;
+            */
 
 
-
-            case 7: //Bootstrapper receives a stream request
+            case 6: //Bootstrapper receives a stream request
 
                 // Ads requesting node to the list of nodes receiving the stream
                 int streamRequestId = packetReceived.getSenderId();
@@ -353,6 +419,15 @@ public class OttBootStrapper implements Runnable {
                 finally {
                     this.nodesToStreamToLock.unlock();
                 }
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
+                break;
+
+
+
+            case 7: //RECEIVING CONFIRMATION
+                PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                if(res!=null)
+                    System.out.println("Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
                 break;
         }
     }

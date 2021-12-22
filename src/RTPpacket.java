@@ -4,16 +4,6 @@ import java.util.Arrays;
 
 public class RTPpacket{
 
-      /**private int Version;
-      private int Padding;
-      private int Extension;
-      private int CC;
-      private int Marker;
-      private int PayloadType;
-      private int SequenceNumber;
-      private int TimeStamp;
-      private int Ssrc;
-      private int senderId; */
 
       private byte[] header;
       private byte[] payload;
@@ -22,8 +12,7 @@ public class RTPpacket{
 
 
     /** Payload Types:
-     *  0 -> asking the server for the neighbors
-     *
+     *  26 -> sending stream        Bootstrapper|Ott -> Ott|Client
      */
 
     /**
@@ -43,16 +32,16 @@ public class RTPpacket{
     }
 
     public RTPpacket (byte[] packet){
-        this.header = Arrays.copyOfRange(packet,0, Constants.HEADER_SIZE);
+        this.header = Arrays.copyOfRange(packet,0, Constants.RTPpacket_HEADER_SIZE);
         int dataSize = getPayloadSize();
-        this.payload = Arrays.copyOfRange(packet,Constants.HEADER_SIZE, Constants.HEADER_SIZE + dataSize);
+        this.payload = Arrays.copyOfRange(packet,Constants.RTPpacket_HEADER_SIZE, Constants.RTPpacket_HEADER_SIZE + dataSize);
 
     }
 
     public RTPpacket (byte[] packet, InetAddress fromIp, Integer fromPort){
-        this.header = Arrays.copyOfRange(packet,0, Constants.HEADER_SIZE);
+        this.header = Arrays.copyOfRange(packet,0, Constants.RTPpacket_HEADER_SIZE);
         int dataSize = getPayloadSize();
-        this.payload = Arrays.copyOfRange(packet,Constants.HEADER_SIZE, Constants.HEADER_SIZE + dataSize);
+        this.payload = Arrays.copyOfRange(packet,Constants.RTPpacket_HEADER_SIZE, Constants.RTPpacket_HEADER_SIZE + dataSize);
         this.fromIp = fromIp;
         this.fromPort = fromPort;
 
@@ -60,7 +49,7 @@ public class RTPpacket{
 
     public RTPpacket (byte[] payload, int packetType, int sequenceNumber, int senderId, int timeStamp){
         this.payload = payload;
-        this.header = new byte[Constants.HEADER_SIZE];
+        this.header = new byte[Constants.RTPpacket_HEADER_SIZE];
         setPacketType(packetType);
         setSequenceNumber(sequenceNumber);
         setSenderId(senderId);
@@ -141,7 +130,7 @@ public class RTPpacket{
 
 
     public byte[] getHeader(){
-        return Arrays.copyOfRange(this.header, 0, Constants.HEADER_SIZE);
+        return Arrays.copyOfRange(this.header, 0, Constants.RTPpacket_HEADER_SIZE);
     }
 
 

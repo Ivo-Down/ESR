@@ -6,12 +6,8 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Ott implements Runnable {
 
@@ -19,19 +15,19 @@ public class Ott implements Runnable {
     private InetAddress ip;
     private Integer port;
     private boolean running;
-    private Integer streamerID;
+    private Integer streamerId;
     private Table neighbors;
-    private Lock neighborsLock = new ReentrantLock();
     private DatagramSocket socket;
-    private LinkedBlockingQueue<RTPpacket> packetsQueue;
+    private LinkedBlockingQueue<OttPacket> packetsQueue;
     private AddressingTable addressingTable;
-    private Lock addressingTableLock = new ReentrantLock();
     private boolean isClient;
     private LinkedBlockingQueue<RTPpacket> framesQueue;
     private boolean streaming;
     private HashSet<Integer> nodesToStreamTo;
-    private Lock nodesToStreamToLock = new ReentrantLock();
     private byte[] buffer = new byte[Constants.DEFAULT_BUFFER_SIZE];
+    private boolean receivingStream;
+    private ConcurrentHashMap<Integer,PendingRequests> pendingRequestsTable;
+    private AtomicInteger requestID;
 
 
     // ------------------------------ CONSTRUCTORS ------------------------------
@@ -47,7 +43,9 @@ public class Ott implements Runnable {
         this.framesQueue = new LinkedBlockingQueue<>();
         this.streaming = false;
         this.nodesToStreamTo = new HashSet<>();
-        this.streamerID=-1;
+        this.receivingStream = false;
+        this.pendingRequestsTable = new ConcurrentHashMap<>();
+        this.requestID = new AtomicInteger(1);
     }
 
 
@@ -61,9 +59,6 @@ public class Ott implements Runnable {
         this.ip = ip;
     }
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
 
     public Integer getPort() {
         return port;
@@ -73,13 +68,6 @@ public class Ott implements Runnable {
         this.port = port;
     }
 
-    public Table getNeighbors() {
-        return neighbors;
-    }
-
-    public void setNeighbors(Table neighbors) {
-        this.neighbors = neighbors;
-    }
 
 
 
@@ -95,14 +83,52 @@ public class Ott implements Runnable {
             this.socket = new DatagramSocket(this.port);
             System.out.println("Node is running!");
 
-            running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
+            new Thread(() -> {
+                System.out.println("===> CONSUMING PENDING REQUESTS");
+                while(true)
+                {
+                    for (ConcurrentHashMap.Entry<Integer,PendingRequests> m : pendingRequestsTable.entrySet()){
+                        int timeStamp = (int) (System.currentTimeMillis());
+                        int lastSentTime = m.getValue().getTimeStamp();
+                        int elapsedTime = timeStamp - lastSentTime;
 
+                        if((m.getValue().getSentCounter() >= Constants.TRIES_UNTIL_TIMEOUT)){
+
+                            this.pendingRequestsTable.remove(m.getKey());
+                            int nodeId = this.neighbors.getNodeByIpAndPort(m.getValue().getIpDestinyNode(),m.getValue().getPortDestinyNode());
+                            if(nodeId>0){
+                                updateNeighborState(nodeId, NodeInfo.nodeState.OFF);
+                                System.out.println("->Node " + nodeId+"  timed out!");
+                            }
+
+
+                        }else if(elapsedTime > 100) {
+                            int actualCounter = m.getValue().getSentCounter() +1;
+                            m.getValue().setSentCounter(actualCounter);
+                            timeStamp = (int) (System.currentTimeMillis());
+                            m.getValue().setTimeStamp(timeStamp);
+
+                            System.out.println("->Sending repeated packet to: " + m.getValue().getIpDestinyNode() + "\tport: "+ m.getValue().getPortDestinyNode()+ "\ttype: " + m.getValue().getPacket().getPacketType());
+                            sendRepeatedPacket(m.getValue().getPacket(),m.getValue().getIpDestinyNode(), m.getValue().getPortDestinyNode());
+
+                        }
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
+
+            running = openConnection(); //Starts the connection with the bootstrapper and gets its neighbors
 
             // If it is a client, run thread to consume stream from special socket
             if(this.isClient) {
                 System.out.println("===> WATCHING STREAM");
                 new Thread(() -> {
-                    Client c = new Client(this.framesQueue);
+                    Client c = new Client(this.framesQueue, this.id);
                     // Requesting stream to the nearest streaming node
                     requestStream();
 
@@ -111,7 +137,6 @@ public class Ott implements Runnable {
 
             // Thread to stream, consumes from framesQueue and sends to all its receivingStreamNodes
             if(!this.isClient) {
-
                 new Thread(() -> {
                     System.out.println("===> STREAMING");
                     while(this.running){
@@ -127,104 +152,102 @@ public class Ott implements Runnable {
                         streamPacket(rtp_packet);
                     }
                 }).start();
+            }
 
 
+            new Thread(() -> {
+                // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
+                System.out.println("===> CHECKING IF NEIGHBORS ARE ALIVE");
 
+                // De x em x segundos vai verificar se os vizinhos ainda estão vivos
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.scheduleAtFixedRate(() -> {
 
-                new Thread(() -> {
-                    // Esta thread vai periodicamente ver se os nodos vizinhos ainda estão ativos e caso não estejam trata de os desligar
-                    System.out.println("===> CHECKING IF NODES ARE ALIVE");
+                    try {
+                        for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
+                            // Get nodes that are flagged with 'ON'
 
-                    // De x em x segundos vai verificar se os servidores ainda estão vivos
-                    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-                    scheduler.scheduleAtFixedRate(() -> {
-
-                        try {
-                            for(int i=0; i< Constants.TRIES_UNTIL_TIMEOUT; i++){
-                                // Get nodes that are flagged with 'ON'
-
-                                Table onlineNodes;
-                                try{
-                                    this.neighborsLock.lock();
-                                    onlineNodes = this.neighbors.getNodesWithState(NodeInfo.nodeState.ON);
-                                }
-                                finally {
-                                    this.neighborsLock.unlock();
-                                }
-
-
-                                // For each online node, check if it is alive and change its state to UNKNOWN
-                                for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
-                                    if(e.getKey()!=Constants.SERVER_ID)
-                                        sendIsAliveCheck(e.getKey(), e.getValue());
-
-                                // Waits for the nodes to respond
-                                Thread.sleep(Constants.TIMEOUT_TIME);
+                            Table onlineNodes;
+                            synchronized (this.neighbors){
+                                onlineNodes = this.neighbors.getNodesWithState(NodeInfo.nodeState.ON);
                             }
 
-                            HashSet<Integer> nodesThatDied = new HashSet<>();
+                            // For each online node, check if it is alive and change its state to UNKNOWN
+                            for(Map.Entry<Integer, NodeInfo> e: onlineNodes.getMap().entrySet())
+                                if(e.getKey()!=Constants.SERVER_ID)
+                                    sendIsAliveCheck(e.getKey(), e.getValue());
 
-                            // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
-                            try{
-                                this.neighborsLock.lock();
-                                for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
-                                    if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
-
-                                        this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
-                                        System.out.println("Node " + e.getKey() + " timed out.");
-                                        nodesThatDied.add(e.getKey());
-
-                                    }
-                                    if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED)){
-                                        this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
-                                        System.out.println("Node " + e.getKey() + " is alive.");
-                                    }
-                                }
-                            }
-                            finally {
-                                this.neighborsLock.unlock();
-                            }
-
-                            try{
-                                this.addressingTableLock.lock();
-                                for (Integer nodeId: nodesThatDied){
-                                    // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
-                                    if( nodeId.equals(this.streamerID)){
-                                        this.addressingTable.setNeighborState(nodeId, false);
-                                        requestStream();
-                                    }
-                                    this.addressingTable.setNeighborState(nodeId, false);
-                                }
-                            }
-                            finally {
-                                this.addressingTableLock.unlock();
-                            }
-
-
-                            this.neighbors.printTable();
-
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                            // Waits for the nodes to respond
+                            Thread.sleep(Constants.TIMEOUT_TIME);
                         }
 
-                    }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
+                        HashSet<Integer> nodesThatDied = new HashSet<>();
 
-                }).start();
-            }
+                        // At this point the nodes who haven't replied have their state UNKNOWN, so they are changed to OFF
+                        synchronized (this.neighbors){
+                            for(Map.Entry<Integer, NodeInfo> e: this.neighbors.getMap().entrySet()){
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.UNKNOWN)){
+
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.OFF);
+                                    this.neighbors.incDeathCount(e.getKey());
+                                    System.out.println("->Node " + e.getKey() + " timed out.");
+                                    nodesThatDied.add(e.getKey());
+
+                                }
+                                if(e.getValue().getNodeState().equals(NodeInfo.nodeState.CHECKED)){
+                                    this.neighbors.setNodeState(e.getKey(), NodeInfo.nodeState.ON);
+                                    //System.out.println("Node " + e.getKey() + " is alive.");
+                                }
+                            }
+
+                            //this.neighbors.printTable();
+                        }
+
+                        synchronized (this.addressingTable){
+                            for (Integer nodeId: nodesThatDied){
+                                // Verificar se o nodo era o melhor caminho para o servidor, se for tem de se pedir a stream a outro lado
+                                this.addressingTable.setNeighborState(nodeId, false);
+                                if(nodeId.equals(this.streamerId))
+                                    requestStream();
+
+
+                            }
+                        }
+
+                        // Deixa de enviar a stream para os nodos que morreram
+                        synchronized (this.nodesToStreamTo){
+                            for (Integer nodeId: nodesThatDied)
+                                this.nodesToStreamTo.remove(nodeId);
+                        }
+
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }, 0, Constants.NODE_ALIVE_CHECKING_TIME, TimeUnit.SECONDS);
+
+            }).start();
 
 
             new Thread(() -> {
                 System.out.println("===> LISTENING UDP");
                 while(this.running)
                 {
-                    RTPpacket receivePacket = receivePacket();
+                    OttPacket receivePacket = receiveOttPacket();
                     if(receivePacket!=null){
 
                         // Se for um pacote de streaming, nem vai processar
                         if(receivePacket.getPacketType()==26) {
-                            this.streaming=true;  // it is streaming TODO POR ISTO DUMA MANEIRA MAIS ELEGANTE, VAI TAR SMP A DAR SET À  VAR
-                            this.streamerID=receivePacket.getSenderId();
-                            this.framesQueue.add(receivePacket);
+                            int timeStamp = (int) (System.currentTimeMillis());
+
+                            //Convert in RTP packet
+                            RTPpacket receiveRTPpacket = new RTPpacket(receivePacket.getPayload(), 26, receivePacket.getSequenceNumber(), receivePacket.getSenderId(), timeStamp);
+
+                            this.streaming=true;
+                            this.streamerId=receivePacket.getSenderId();
+                            this.receivingStream=true;
+                            this.framesQueue.add(receiveRTPpacket);
                         }
 
                         else
@@ -233,11 +256,13 @@ public class Ott implements Runnable {
                 }
             }).start();
 
-            // ---> Main thread consuming the RTPpackets
+
+
+            // ---> Main thread consuming the Ottpackets
             System.out.println("===> CONSUMING UDP");
             while(this.running){
                 try{
-                    RTPpacket receivePacket = this.packetsQueue.take();
+                    OttPacket receivePacket = this.packetsQueue.take();
                     processPacket(receivePacket);
                 } catch (InterruptedException e){
                     e.printStackTrace();
@@ -258,10 +283,10 @@ public class Ott implements Runnable {
     public boolean openConnection(){
         try{
             // Sends signal to start the connection
-            sendPacket(new byte[0], 0, 1, this.id, InetAddress.getByName(Constants.SERVER_ADDRESS), Constants.DEFAULT_PORT);
+            sendPacket(new byte[0], 0, this.id, InetAddress.getByName(Constants.SERVER_ADDRESS), Constants.DEFAULT_PORT);
 
             // Awaits until the connection is confirmed
-            RTPpacket receivePacket = receivePacket();
+            OttPacket receivePacket = receiveOttPacket();
 
             if( receivePacket!=null){
                 processPacket(receivePacket);
@@ -277,74 +302,42 @@ public class Ott implements Runnable {
     }
 
 
-    public void insertNeighborsInAddressingTable(){
-        try{
-            this.addressingTableLock.lock();
-            for (NodeInfo n : this.neighbors.getNeighborNodes())
-                this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true); //todo assumimos que começam a on?
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+    public synchronized void insertNeighborsInAddressingTable(){
+        for (NodeInfo n : this.neighbors.getNeighborNodes())
+            this.addressingTable.setDistance(n.getNodeId(), n.getNodeId(), 1, true);
     }
 
 
     // For each neighbor, sends the addressingTable
-    public void sendAddressingTable(){
-        byte[] data;
-        try{
-            this.addressingTableLock.lock();
-            data = StaticMethods.serialize(this.addressingTable);
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+    public synchronized void sendAddressingTable(){
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
-        try {
-            neighborsLock.lock();
-            int packetType = 2;
-            // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta, o tipo 22 exige resposta
-            if(this.neighbors.getSize()==1)
-                packetType = 22;
+        int packetType = 2;
+        // Neste caso específico se mandar um pedido tipo 2 nunca vai receber resposta, o tipo 3 exige resposta
+        if(this.neighbors.getSize()==1)
+            packetType = 3;
 
-            for (NodeInfo n : this.neighbors.getNeighborNodes())
-                if(n.getNodeId()!=Constants.SERVER_ID)
-                    sendPacket(data, packetType, 1, this.id, n.getNodeIp(), n.getNodePort());
-        }
-        finally{
-                neighborsLock.unlock();
-        }
+        for (NodeInfo n : this.neighbors.getNeighborNodes())
+            if(n.getNodeId()!=Constants.SERVER_ID && n.getNodeId()!=this.id)
+                sendPacket(data, packetType, this.id, n.getNodeIp(), n.getNodePort());
     }
 
     // Sends the addressingTable to that neighbor
-    public void sendAddressingTable(Integer specificNodeId){
-        System.out.println("Sending updated table to neighbors.");
-        byte[] data;
-        try{
-            this.addressingTableLock.lock();
-            data = StaticMethods.serialize(this.addressingTable);
-        }
-        finally {
-            this.addressingTableLock.unlock();
-        }
+    public synchronized void sendAddressingTable(Integer specificNodeId){
+        System.out.println("->Sending updated table to neighbors.");
+        byte[] data = StaticMethods.serialize(this.addressingTable);
 
-        try {
-            neighborsLock.lock();
-            for (NodeInfo n : this.neighbors.getNeighborNodes()){
-                if(n.getNodeId()== specificNodeId){
-                    sendPacket(data, 2, 1, this.id, n.getNodeIp(), n.getNodePort());
-                }
+        for (NodeInfo n : this.neighbors.getNeighborNodes()){
+            if(n.getNodeId()== specificNodeId){
+                sendPacket(data, 2,this.id, n.getNodeIp(), n.getNodePort());
             }
-        }
-        finally{
-            neighborsLock.unlock();
         }
     }
 
 
 
     // Receives the addressingTable and its owner id
-    public boolean updateAddressingTable(AddressingTable at, Integer neighborId){
+    public synchronized boolean updateAddressingTable(AddressingTable at, Integer neighborId){
         boolean updated = false;
 
         for (Map.Entry<Integer, ArrayList<AddressingTable.Value>> m : at.getDistanceVector().entrySet()){
@@ -372,97 +365,104 @@ public class Ott implements Runnable {
             }
         }
         if(updated)
-            System.out.println("Updated addressing table!");
+            System.out.println("->Updated addressing table!");
         else
-            System.out.println("Did not update addressing table.");
+            System.out.println("->Did not update addressing table.");
         return updated;
     }
 
 
-    public void updateNeighborState(int neighborId, NodeInfo.nodeState state){
-        try {
-            neighborsLock.lock();
-            if(this.neighbors.getMap().containsKey(neighborId))
-                this.neighbors.setNodeState(neighborId, state);
-        }
-        finally{
-            neighborsLock.unlock();
-        }
+    public synchronized void updateNeighborState(int neighborId, NodeInfo.nodeState state){
+        if(this.neighbors.getMap().containsKey(neighborId))
+            this.neighbors.setNodeState(neighborId, state);
 
         boolean isOn = state.equals(NodeInfo.nodeState.ON);
         this.addressingTable.setNeighborState(neighborId, isOn);
     }
 
 
-    public  void requestStream(){
-        int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID); // Node closest to the bootstrapper
+    public synchronized void requestStream(){
+        int nodeToRequestStream = this.addressingTable.getBestNextNode(Constants.SERVER_ID, this.nodesToStreamTo); // Node closest to the bootstrapper
 
-        if(nodeToRequestStream<0)
-            System.out.println("Impossible to request stream, there is no possible path available.");
+        if(nodeToRequestStream<0){
+            System.out.println("->Impossible to request stream, there is no possible path available.");
+            this.receivingStream=false;
+        }
 
         else{
             InetAddress closerNodeIp = this.neighbors.getNodeIP(nodeToRequestStream);
             int closerNodePort = this.neighbors.getNodePort(nodeToRequestStream);
-            System.out.println("Requesting stream to node " + nodeToRequestStream);
-            sendPacket(new byte[0], 7, 1, this.id, closerNodeIp, closerNodePort);
+            System.out.println("->Requesting stream to node " + nodeToRequestStream);
+            sendPacket(new byte[0], 6, this.id, closerNodeIp, closerNodePort);
         }
 
     }
 
-    public void streamPacket(RTPpacket rtPpacket){
-        try {
-            nodesToStreamToLock.lock();
-            neighborsLock.lock();
-            for(Integer nodeId: this.nodesToStreamTo){
-                if(this.neighbors.getNodeState(nodeId) == NodeInfo.nodeState.ON){ // Only streams to alive nodes
-                    InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
-                    int requestFromPort = this.neighbors.getNodePort(nodeId);
-                    sendPacket(rtPpacket, requestFromIp, requestFromPort);
-                    System.out.println("enviei stream............");
-                }
+    public synchronized void streamPacket(RTPpacket rtPpacket){
+        for(Integer nodeId: this.nodesToStreamTo){
+            if(this.neighbors.getNodeState(nodeId) == NodeInfo.nodeState.ON){ // Only streams to alive nodes
+                InetAddress requestFromIp = this.neighbors.getNodeIP(nodeId);
+                int requestFromPort = this.neighbors.getNodePort(nodeId);
+                sendStreamPacket(rtPpacket, requestFromIp, requestFromPort);
             }
         }
-        finally{
-            neighborsLock.unlock();
-            nodesToStreamToLock.unlock();
-        }
     }
 
 
-    public void sendIsAliveCheck (int id, NodeInfo nodeInfo){
-        System.out.println("Checking if node "+ id+" is alive.");
-        sendPacket(new byte[0], 5, 1, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
-        try{
-            this.neighborsLock.lock();
-            this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
-        }
-        finally {
-            this.neighborsLock.unlock();
-        }
+    public synchronized void sendIsAliveCheck (int id, NodeInfo nodeInfo){
+        //System.out.println("Checking if node "+ id+" is alive.");
+        sendPacket(new byte[0], 4, this.id, nodeInfo.getNodeIp(), nodeInfo.getNodePort());
+        this.neighbors.setNodeState(id, NodeInfo.nodeState.UNKNOWN);
     }
 
 
-    public void sendPacket(RTPpacket rtPpacket, InetAddress IP, int port){
+    public void sendStreamPacket(RTPpacket rtPpacket, InetAddress IP, int port){
         try{
             DatagramPacket packet = new DatagramPacket(rtPpacket.getPacket(), rtPpacket.getPacketSize(), IP, port);
-
             this.socket.send(packet);
-            //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
-            //rtPpacket.printPacketHeader();
         } catch (IOException e){
             e.printStackTrace();
         }
     }
 
-
-    public void sendPacket(byte [] payload, int packetType, int sequenceNumber, int senderId, InetAddress IP, int port){
+    public void sendConfirmationPacket(int packetID, InetAddress IP, int port){
         try{
-            int timeStamp = (int) (System.currentTimeMillis() / 1000);
+            byte[] payload = new byte[Constants.DEFAULT_BUFFER_SIZE];
+            int timeStamp = (int) (System.currentTimeMillis());
+            OttPacket newPacket = new OttPacket(payload, 7, packetID, this.id, timeStamp);
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            System.out.println("->Node "+ this.id +": \tsent confirmation packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+            this.socket.send(packet);
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
 
-            RTPpacket newPacket = new RTPpacket(payload, packetType, sequenceNumber, senderId, timeStamp);
+    public void sendPacket(byte [] payload, int packetType, int senderId, InetAddress IP, int port){
+        try{
+            int timeStamp = (int) (System.currentTimeMillis());
+            int seq = this.requestID.intValue();
+            OttPacket newPacket = new OttPacket(payload, packetType, seq, senderId, timeStamp);
             DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
 
             this.socket.send(packet);
+
+            if(newPacket.getPacketType()!=26 && newPacket.getPacketType()!=4 && newPacket.getPacketType()!=5)
+                System.out.println("->Node "+ this.id +": \tsent packet to IP: " + IP + "  port: " + port + " type: " + newPacket.getPacketType());
+
+            // Se enviar um pacote de um destes tipos, vai ficar à espera de confirmção
+            if(packetType==2 || packetType==3 || packetType==6 || packetType==0){
+                int request = this.requestID.intValue();
+                PendingRequests pr = new PendingRequests(request,newPacket,IP,port,1,timeStamp);
+                if(!this.pendingRequestsTable.containsKey(request)) {
+                    int packetNumber = getRequest(packetType, IP, port);
+                    if(packetNumber<0){
+                        pendingRequestsTable.put(request, pr);
+                        this.requestID.getAndIncrement();
+                    }
+
+                }
+            }
             //System.out.println(">> Sent packet to IP: " + IP + "  port: " + port);
             //newPacket.printPacketHeader();
         } catch (IOException e){
@@ -471,8 +471,31 @@ public class Ott implements Runnable {
     }
 
 
-    public RTPpacket receivePacket(){
-        RTPpacket rtpPacket = new RTPpacket();
+
+    // Retorna, se existir, um pacote daquele tipo um determinado nodo
+    public int getRequest(int packetType, InetAddress ip, int port){
+        for(Map.Entry<Integer, PendingRequests> e: pendingRequestsTable.entrySet()){
+            if(e.getValue().getIpDestinyNode().equals(ip) && e.getValue().getPortDestinyNode()==port && e.getValue().getPacket().getPacketType()==packetType)
+                return e.getKey();
+        }
+        return -1;
+    }
+
+
+    public void sendRepeatedPacket(OttPacket newPacket, InetAddress IP, int port){
+        try{
+            DatagramPacket packet = new DatagramPacket(newPacket.getPacket(), newPacket.getPacketSize(), IP, port);
+            this.socket.send(packet);
+            //newPacket.printPacketHeader();
+        } catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+
+
+    public OttPacket receiveOttPacket(){
+        OttPacket ottPacket = new OttPacket();
         try{
             DatagramPacket packet = new DatagramPacket(this.buffer, this.buffer.length);
             socket.receive(packet);
@@ -480,21 +503,21 @@ public class Ott implements Runnable {
             InetAddress fromIp = packet.getAddress();
             Integer fromPort = packet.getPort();
 
-            rtpPacket = new RTPpacket(this.buffer, fromIp, fromPort);
+            ottPacket = new OttPacket(this.buffer, fromIp, fromPort);
 
-            /*if(rtpPacket.getPacketType()!=26){
-                System.out.println(">> Packet received from IP: " + fromIp + "\tPort: " + fromPort);
-                rtpPacket.printPacketHeader();
-            }*/
+            //Para nao printar o spam
+            if(ottPacket.getPacketType()!=26 && ottPacket.getPacketType()!=4 && ottPacket.getPacketType()!=5)
+                System.out.println("->Node "+ this.id +": \treceived packet from IP: " + fromIp + "\tPort: " + fromPort + "\tnode: " + ottPacket.getSenderId()+ "\tType: " + ottPacket.getPacketType());
+
 
         } catch (IOException e){
             e.printStackTrace();
         }
-        return rtpPacket;
+        return ottPacket;
     }
 
 
-    public void processPacket(RTPpacket packetReceived){
+    public synchronized void processPacket(OttPacket packetReceived){
 
         updateNeighborState(packetReceived.getSenderId(), NodeInfo.nodeState.ON);
 
@@ -504,101 +527,103 @@ public class Ott implements Runnable {
 
                 byte[] data = packetReceived.getPayload();
 
-                try {
-                    neighborsLock.lock();
-                    this.neighbors = (Table) StaticMethods.deserialize(data);
-                }
-                finally{
-                    neighborsLock.unlock();
-                }
+                this.neighbors = (Table) StaticMethods.deserialize(data);
 
-                System.out.println("-> Received neighbors information.\n");
+                System.out.println("->Received neighbors information from bootstrapper.\n");
 
                 // Inserts its neighbors in the addressing table
                 insertNeighborsInAddressingTable();
 
                 // Sends to each neighbor the addressing table
                 sendAddressingTable();
-                System.out.println(this.addressingTable.toString());
+                System.out.println("Adressing Table:\n"+this.addressingTable.toString());
+
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
 
 
 
             case 2: //Receives addressingTable information from a neighbor and updated addressingTable
+                // Se o nodo já tinha estado online e morreu, enviar tabela por solidariedade
+                if(this.neighbors.getDeathCount(packetReceived.getSenderId())>0){
+                    System.out.println("->Sent addressing table to reborn node.");
+                    sendAddressingTable(packetReceived.getSenderId());
+                    this.neighbors.decDeathCount(packetReceived.getSenderId());
+                }
 
-                byte[] addrdata = packetReceived.getPayload();
-                AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
+                else{
+                    byte[] addrdata = packetReceived.getPayload();
+                    AddressingTable at = (AddressingTable) StaticMethods.deserialize(addrdata);
 
-                // Update addressing table
-                boolean updated;
-
-                try{
-                    this.addressingTableLock.lock();
-                    updated = updateAddressingTable(at, packetReceived.getSenderId());
+                    // Update addressing table
+                    boolean updated = updateAddressingTable(at, packetReceived.getSenderId());
                     // If the addressing table changed, notify the neighbors
                     if(updated){
                         sendAddressingTable();
                         System.out.println(this.addressingTable.toString());
                     }
                 }
-                finally {
-                    this.addressingTableLock.unlock();
-                }
-                break;
 
-
-
-            case 22: // Isolated neighbor wants to be updated, mandatory request to ask for
-                sendAddressingTable(packetReceived.getSenderId());
-                try{
-                    this.addressingTableLock.lock();
-                    System.out.println(this.addressingTable.toString());
-                }
-                finally {
-                    this.addressingTableLock.unlock();
-                }
-
-                break;
-
-
-
-            case 5: //Node receives a 'Is alive check'
-                // Sends a Im alive signal
-                System.out.println("-> Received isAlive check. Replying.\n");
-                sendPacket(new byte[0], 6, 1, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
-                break;
-
-
-
-            case 6: //IsAlive confirmation
-                try{
-                    this.neighborsLock.lock();
-                    this.neighbors.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
-                }
-                finally {
-                    this.neighborsLock.unlock();
-                }
-
-                break;
-
-
-
-            case 7: //Node receives a stream request
-
-                // Ads requesting node to the list of nodes receiving the stream
-                try {
-                    nodesToStreamToLock.lock();
-                    this.nodesToStreamTo.add(packetReceived.getSenderId());
-                }
-                finally{
-                    nodesToStreamToLock.unlock();
-                }
-
-                // If isn't receiving the stream, goes and asks for it
-                if(!this.streaming){
+                // Se for cliente e não estiver a receber a stream
+                if(this.isClient && !this.receivingStream){
                     requestStream();
                 }
+
+                if(!this.isClient && !this.receivingStream && this.nodesToStreamTo.size()>0){
+                    requestStream();
+                }
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
                 break;
+
+
+
+            case 3: // Isolated neighbor wants to be updated, mandatory request to ask for
+                sendAddressingTable(packetReceived.getSenderId());
+                System.out.println(this.addressingTable.toString());
+
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
+                break;
+
+
+
+            case 4: //Node receives a 'Is alive check'
+                // Sends a Im alive signal
+                sendPacket(new byte[0], 5, this.id, packetReceived.getFromIp(), packetReceived.getFromPort());
+                break;
+
+
+
+            case 5: //IsAlive confirmation
+                this.neighbors.setNodeState(packetReceived.getSenderId(), NodeInfo.nodeState.CHECKED);
+                break;
+
+
+
+            case 6: //Node receives a stream request
+
+                if(!this.isClient){
+
+                    // Ads requesting node to the list of nodes receiving the stream
+                    this.nodesToStreamTo.add(packetReceived.getSenderId());
+
+                    // If it isn't receiving the stream, goes and asks for it
+                    if(!this.streaming){
+                        requestStream();
+                    }
+
+                }
+                sendConfirmationPacket(packetReceived.getSequenceNumber(),packetReceived.getFromIp(),packetReceived.getFromPort());
+                break;
+
+
+
+            case 7: //RECEIVING CONFIRMATION
+                PendingRequests res = this.pendingRequestsTable.remove(packetReceived.getSequenceNumber());
+                if(res!=null)
+                    System.out.println("->Received confirmation, removing request "+ packetReceived.getSequenceNumber()+"!");
+                break;
+
+
         }
     }
 

@@ -1,6 +1,7 @@
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 public class AddressingTable implements Serializable {
@@ -101,16 +102,29 @@ public class AddressingTable implements Serializable {
         return getBestValue(destinyNode).getCost();
     }
 
-    public int getBestNextNode(Integer destinyNode){
-        return getBestValue(destinyNode).getNextNode();
-    }
-
     // Returns the best value which is available
     public Value getBestValue(Integer destinyNode){
         Value res = new Value();
         int min = Integer.MAX_VALUE;
         for(Value v: this.distanceVector.get(destinyNode))
             if(v.getIsOn() && min > v.getCost()){
+                min = v.getCost();
+                res = v;
+            }
+        return res;
+    }
+
+
+    public int getBestNextNode(Integer destinyNode, HashSet<Integer> excludedNodes){
+        return getBestValue(destinyNode, excludedNodes).getNextNode();
+    }
+
+    // Returns the best value which is available
+    public Value getBestValue(Integer destinyNode, HashSet<Integer> excludedNodes){
+        Value res = new Value();
+        int min = Integer.MAX_VALUE;
+        for(Value v: this.distanceVector.get(destinyNode))
+            if(v.getIsOn() && min > v.getCost() && !excludedNodes.contains(v.getNextNode())){
                 min = v.getCost();
                 res = v;
             }
@@ -130,11 +144,6 @@ public class AddressingTable implements Serializable {
 
     public HashMap<Integer, ArrayList<Value>> getDistanceVector() {
         return distanceVector;
-    }
-
-
-    public void setDistanceVector(HashMap<Integer, ArrayList<Value>> d) {
-        this.distanceVector = d;
     }
 
 
